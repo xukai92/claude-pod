@@ -8,7 +8,7 @@ Your home directory is mounted **read-only** into the container, with writable o
 
 The current working directory is mounted **read-write** at the same absolute path, so file paths in Claude's output match the host.
 
-No Claude Code or bun is installed in the image — they're picked up from the host via the read-only home mount. The entrypoint uses fish shell to inherit your PATH.
+No Claude Code or bun is installed in the image — they're picked up from the host via the read-only home mount. The entrypoint runs through your login shell (bash, zsh, or fish) to inherit your PATH.
 
 ## Quick start
 
