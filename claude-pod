@@ -68,7 +68,7 @@ require_podman() {
 mount_home_items() {
     local -n _args=$1
     local cwd="$2"
-    local extra_rw="$3"
+    local extra_rw="${3:-}"
     local cwd_top=""
     if [[ "$cwd" == "$HOME"/* ]]; then
         local rel="${cwd#"$HOME"/}"
@@ -220,9 +220,9 @@ cmd_run() {
         [[ -n "$var" ]] && args+=(-e "$var")
     done < <(cfg_get_array "defaults" "extra_env")
 
-    # Extra writable dirs outside $HOME (home subdirs handled by mount_home_items)
+    # Extra writable dirs (top-level $HOME entries handled by mount_home_items)
     for dir in "${writable_dirs[@]}"; do
-        [[ "$dir" == "$HOME"/* ]] && continue
+        [[ "$dir" == "$HOME" ]] && continue
         args+=(-v "${dir}:${dir}")
     done
 
