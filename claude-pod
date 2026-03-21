@@ -345,9 +345,9 @@ cmd_install() {
         echo "warning: ~/.local/bin is not in your PATH. Add it to your shell profile." >&2
     fi
 
-    # Build the container image
+    # Build the container image using the current process (BUILD_DIR is already set)
     echo ""
-    "${HOME}/.local/bin/claude-pod" build
+    cmd_build
 }
 
 # --- Main ---
