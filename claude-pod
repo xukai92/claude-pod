@@ -130,7 +130,8 @@ cmd_run() {
                 [[ $# -lt 2 ]] && die "Flag --writable-dir requires a directory"
                 writable_dirs+=("$2"); shift 2 ;;
             --)              shift; claude_args=("$@"); break ;;
-            *)               claude_args=("$@"); break ;;
+            -*)              claude_args=("$@"); break ;;
+            *)               die "Unknown command: $1. See 'claude-pod --help'." ;;
         esac
     done
 
@@ -263,7 +264,6 @@ case "${1:-}" in
     exec)  shift; cmd_exec "$@" ;;
     ps)    shift; cmd_ps "$@" ;;
     clean) shift; cmd_clean "$@" ;;
-    --)  shift; cmd_run "$@" ;;
     -h|--help)
         cat <<'EOF'
 Usage: claude-pod [command] [options]
