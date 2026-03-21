@@ -66,7 +66,11 @@ require_podman() {
 cmd_build() {
     require_podman
     local shell_name
-    shell_name=$(basename "$(getent passwd "$(whoami)" | cut -d: -f7)")
+    shell_name=$(basename "${SHELL:-bash}")
+    # Prefer getent if available, but don't fail if it's missing
+    if command -v getent >/dev/null 2>&1; then
+        shell_name=$(basename "$(getent passwd "$(whoami)" | cut -d: -f7)") || shell_name=$(basename "${SHELL:-bash}")
+    fi
     case "$shell_name" in
         bash|zsh|fish) ;;
         *) echo "warning: unsupported shell '$shell_name', defaulting to bash" >&2; shell_name=bash ;;
