@@ -76,8 +76,39 @@ require_image() {
     fi
 }
 
+suggest_podman_install() {
+    echo "error: Podman is not installed." >&2
+    local install_cmd=""
+    if command -v dnf >/dev/null 2>&1; then
+        install_cmd="sudo dnf install -y podman"
+    elif command -v apt-get >/dev/null 2>&1; then
+        install_cmd="sudo apt-get install -y podman"
+    elif command -v brew >/dev/null 2>&1; then
+        install_cmd="brew install podman"
+    elif command -v pacman >/dev/null 2>&1; then
+        install_cmd="sudo pacman -S podman"
+    elif command -v zypper >/dev/null 2>&1; then
+        install_cmd="sudo zypper install -y podman"
+    fi
+
+    if [[ -n "$install_cmd" ]]; then
+        echo "Install with: $install_cmd" >&2
+        # Offer to install if running interactively
+        if [[ -t 0 && -t 1 ]]; then
+            read -rp "Install now? [y/N] " answer
+            if [[ "$answer" =~ ^[Yy]$ ]]; then
+                $install_cmd || die "Podman installation failed."
+                return
+            fi
+        fi
+    else
+        echo "See https://podman.io/docs/installation for install instructions." >&2
+    fi
+    exit 1
+}
+
 require_podman() {
-    command -v podman >/dev/null 2>&1 || die "Podman is not installed."
+    command -v podman >/dev/null 2>&1 || suggest_podman_install
 }
 
 # Mount each item under $HOME with appropriate permissions.
