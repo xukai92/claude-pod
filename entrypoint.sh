@@ -1,7 +1,7 @@
 #!/bin/sh
 # Entrypoint wrapper for claude-pod containers.
 # Runs Claude Code via the user's login shell (to inherit PATH/config),
-# then optionally sends an ntfy.sh notification on exit.
+# then optionally runs a notification command on exit.
 
 # Detect user's configured login shell, fall back to /bin/bash
 USER_SHELL=$(getent passwd "$(id -un)" | cut -d: -f7)
@@ -24,11 +24,10 @@ case "$USER_SHELL" in
 esac
 exit_code=$?
 
-# If NTFY_TOPIC is set, notify on exit
-if [ -n "${NTFY_TOPIC:-}" ]; then
-    workspace=$(basename "$PWD")
-    curl -s -d "Claude Code session finished in $workspace (exit $exit_code)" \
-        "https://ntfy.sh/$NTFY_TOPIC" >/dev/null 2>&1 || true
+# Run notification command if set (receives WORKSPACE and EXIT_CODE as env vars)
+if [ -n "${NOTIFY_CMD:-}" ]; then
+    WORKSPACE=$(basename "$PWD") EXIT_CODE=$exit_code \
+        sh -c "$NOTIFY_CMD" >/dev/null 2>&1 || true
 fi
 
 exit "$exit_code"
