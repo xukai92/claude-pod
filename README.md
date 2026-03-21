@@ -39,7 +39,7 @@ claude-pod shell                    # drop into a shell in the container
 | `claude-pod [run] [flags] [-- <claude args>]` | Start a session (default) |
 | `claude-pod shell` | Shell into the container |
 | `claude-pod exec <cmd>` | Run a command in a running container |
-| `claude-pod ps` | List running containers |
+| `claude-pod ps` | List running claude-pod containers |
 | `claude-pod clean` | Remove the container image |
 
 ### Run flags

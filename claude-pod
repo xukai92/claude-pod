@@ -82,9 +82,12 @@ suggest_podman_install() {
     local sudo_prefix=""
 
     # Only prefix sudo for non-root on Linux package managers
+    local needs_root=false
     if [[ "$(id -u)" -ne 0 ]]; then
         if command -v sudo >/dev/null 2>&1; then
             sudo_prefix="sudo "
+        else
+            needs_root=true
         fi
     fi
 
@@ -94,10 +97,18 @@ suggest_podman_install() {
         install_cmd="${sudo_prefix}apt-get install -y podman"
     elif command -v brew >/dev/null 2>&1; then
         install_cmd="brew install podman"
+        needs_root=false  # brew doesn't need root
     elif command -v pacman >/dev/null 2>&1; then
         install_cmd="${sudo_prefix}pacman -S podman"
     elif command -v zypper >/dev/null 2>&1; then
         install_cmd="${sudo_prefix}zypper install -y podman"
+    fi
+
+    # Non-root without sudo on a system package manager — can only suggest
+    if $needs_root && [[ -n "$install_cmd" ]]; then
+        echo "Install with: sudo ${install_cmd}" >&2
+        echo "Run as root or install sudo first." >&2
+        exit 1
     fi
 
     if [[ -n "$install_cmd" ]]; then
