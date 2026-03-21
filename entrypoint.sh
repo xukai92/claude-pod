@@ -12,6 +12,13 @@ if [ ! -x "$USER_SHELL" ]; then
     USER_SHELL=/bin/bash
 fi
 
+# Copy .claude.json from ro staging mount to writable $HOME.
+# File bind-mounts at $HOME/.claude.json break on atomic writes (EROFS),
+# so we mount ro at /mnt and copy here. Changes won't sync back to host.
+if [ -f /mnt/.claude.json ]; then
+    cp /mnt/.claude.json "$HOME/.claude.json"
+fi
+
 # Run claude through a login shell so PATH and env are set up.
 # Use "$@" to preserve argument boundaries safely.
 case "$USER_SHELL" in
