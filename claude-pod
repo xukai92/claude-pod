@@ -61,6 +61,45 @@ require_podman() {
     command -v podman >/dev/null 2>&1 || die "Podman is not installed."
 }
 
+# Mount each item under $HOME with appropriate permissions.
+# CWD's top-level parent is mounted rw; .claude.json is staged at /mnt;
+# known writable dirs (.claude, .config, .local) are rw; everything else ro.
+# Accepts a space-separated list of writable dirs to also mount rw.
+mount_home_items() {
+    local -n _args=$1
+    local cwd="$2"
+    local extra_rw="${3:-}"
+    local cwd_top=""
+    if [[ "$cwd" == "$HOME"/* ]]; then
+        local rel="${cwd#"$HOME"/}"
+        cwd_top="${HOME}/${rel%%/*}"
+    fi
+
+    for item in "${HOME}"/.[!.]* "${HOME}"/..?* "${HOME}"/*; do
+        [[ -e "$item" ]] || continue
+        local base
+        base=$(basename "$item")
+        case "$base" in
+            .claude.json)
+                _args+=(-v "${item}:/mnt/.claude.json:ro") ;;
+            .claude|.config|.local)
+                _args+=(-v "${item}:${item}") ;;
+            *)
+                if [[ "$item" == "$cwd_top" || " $extra_rw " == *" $item "* ]]; then
+                    _args+=(-v "${item}:${item}")
+                else
+                    _args+=(-v "${item}:${item}:ro")
+                fi ;;
+        esac
+    done
+}
+
+# Only paths outside $HOME need their own mount.
+cwd_needs_mount() {
+    local cwd="$1"
+    [[ "$cwd" != "$HOME" && "$cwd" != "$HOME"/* ]]
+}
+
 # --- Subcommands ---
 
 cmd_build() {
@@ -146,16 +185,15 @@ cmd_run() {
         --userns=keep-id
         # Disable SELinux relabeling — :Z would privately relabel host dirs
         --security-opt label=disable
-        # Mount entire home read-only (resolves symlinks, hooks, dotfiles, etc.)
-        -v "${HOME}:${HOME}:ro"
-        # Overlay writable dirs on top of the ro home mount
-        -v "${HOME}/.claude:${HOME}/.claude"
-        -v "${HOME}/.claude.json:${HOME}/.claude.json"
-        -v "${HOME}/.local/share:${HOME}/.local/share"
-        # Mount cwd read-write for the actual workspace
-        -v "${cwd}:${cwd}"
         -w "${cwd}"
     )
+
+    mount_home_items args "$cwd" "${writable_dirs[*]}"
+
+    # Mount cwd read-write if outside $HOME
+    if cwd_needs_mount "$cwd"; then
+        args+=(-v "${cwd}:${cwd}")
+    fi
 
     # Mount Homebrew (linuxbrew) if present
     if [[ -n "${HOMEBREW_PREFIX:-}" && -d "$HOMEBREW_PREFIX" ]]; then
@@ -182,8 +220,9 @@ cmd_run() {
         [[ -n "$var" ]] && args+=(-e "$var")
     done < <(cfg_get_array "defaults" "extra_env")
 
-    # Extra writable dirs (overlaid on top of the ro home mount)
+    # Extra writable dirs (top-level $HOME entries handled by mount_home_items)
     for dir in "${writable_dirs[@]}"; do
+        [[ "$dir" == "$HOME" ]] && continue
         args+=(-v "${dir}:${dir}")
     done
 
@@ -213,19 +252,21 @@ cmd_shell() {
         -it --rm
         --userns=keep-id
         --security-opt label=disable
-        -v "${HOME}:${HOME}:ro"
-        -v "${HOME}/.claude:${HOME}/.claude"
-        -v "${HOME}/.claude.json:${HOME}/.claude.json"
-        -v "${HOME}/.local/share:${HOME}/.local/share"
-        -v "${cwd}:${cwd}"
         -w "${cwd}"
     )
+
+    mount_home_items shell_args "$cwd"
+
+    # Mount cwd read-write if outside $HOME
+    if cwd_needs_mount "$cwd"; then
+        shell_args+=(-v "${cwd}:${cwd}")
+    fi
 
     if [[ -n "${HOMEBREW_PREFIX:-}" && -d "$HOMEBREW_PREFIX" ]]; then
         shell_args+=(-v "${HOMEBREW_PREFIX}:${HOMEBREW_PREFIX}:ro")
     fi
 
-    podman run "${shell_args[@]}" --entrypoint /bin/bash "$IMAGE"
+    podman run "${shell_args[@]}" -e CLAUDE_POD_SHELL=1 "$IMAGE"
 }
 
 cmd_exec() {
