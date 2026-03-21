@@ -266,7 +266,7 @@ cmd_shell() {
         shell_args+=(-v "${HOMEBREW_PREFIX}:${HOMEBREW_PREFIX}:ro")
     fi
 
-    podman run "${shell_args[@]}" --entrypoint /bin/bash "$IMAGE"
+    podman run "${shell_args[@]}" -e CLAUDE_POD_SHELL=1 "$IMAGE"
 }
 
 cmd_exec() {
