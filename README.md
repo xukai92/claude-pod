@@ -24,6 +24,7 @@ claude-pod
 
 | Command | Description |
 |---------|-------------|
+| `claude-pod install` | Install claude-pod to `~/.local/bin` and build image |
 | `claude-pod build` | Build the container image for your user |
 | `claude-pod [run] [flags] [-- <claude args>]` | Start an interactive session (default command) |
 | `claude-pod shell` | Drop into a bash shell in the container |
@@ -85,14 +86,42 @@ extra_env = ["GITHUB_TOKEN"]
 
 ## Install
 
+**One-liner** (downloads from GitHub, installs to `~/.local/bin`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/xukai92/claude-pod/main/claude-pod | bash -s -- install
+```
+
+**From a local clone** (for development):
+
 ```bash
 git clone https://github.com/xukai92/claude-pod.git
 cd claude-pod
-./claude-pod build
-
-# Optional: add to PATH
-ln -s "$(pwd)/claude-pod" ~/.local/bin/claude-pod
+./claude-pod install
 ```
+
+Both paths copy `claude-pod`, `entrypoint.sh`, and `Containerfile` to `~/.local/share/claude-pod/`, install the script to `~/.local/bin/claude-pod`, and build the container image.
+
+### Development
+
+When developing locally, you can run `claude-pod` directly from the clone without installing:
+
+```bash
+./claude-pod build   # uses Containerfile from the clone
+./claude-pod         # run a session
+```
+
+If you previously ran `install`, the installed copy in `~/.local/bin` is independent of the clone. Run `./claude-pod install` again to update it with your local changes.
+
+To test the one-liner install from a branch, use the GitHub API to bypass CDN caching and `--ref` to download all files from the same branch:
+
+```bash
+curl -fsSL -H "Accept: application/vnd.github.v3.raw" \
+  "https://api.github.com/repos/xukai92/claude-pod/contents/claude-pod?ref=<branch>" \
+  | bash -s -- install --ref <branch>
+```
+
+Note: `raw.githubusercontent.com` caches aggressively and query-string cache busting does not work. The `--ref` flag ensures `entrypoint.sh` and `Containerfile` are also fetched from the branch.
 
 ## License
 

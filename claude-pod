@@ -1,12 +1,31 @@
 #!/bin/bash
 # claude-pod — run Claude Code in a rootless Podman container
+
+# Bail out early if not running under bash (POSIX-compatible check so sh shows a clear error)
+if [ -z "${BASH_VERSION:-}" ]; then
+    echo "error: claude-pod requires bash. Run with: bash claude-pod <command>" >&2
+    exit 1
+fi
+
 set -euo pipefail
 
 IMAGE="claude-pod:latest"
 CONFIG_FILE="${HOME}/.config/claude-pod/config.toml"
 CONTAINER_NAME_PREFIX="claude-pod"
+DATA_DIR="${HOME}/.local/share/claude-pod"
 # Resolve the real path of this script (follows symlinks) so build works from any directory
-SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+# When piped from curl (bash -s), BASH_SOURCE[0] is empty — fall back gracefully
+if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]]; then
+    SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+else
+    SCRIPT_DIR=""
+fi
+# For build context, prefer SCRIPT_DIR if it has both build files, else fall back to DATA_DIR
+if [[ -n "$SCRIPT_DIR" && -f "${SCRIPT_DIR}/Containerfile" && -f "${SCRIPT_DIR}/entrypoint.sh" ]]; then
+    BUILD_DIR="$SCRIPT_DIR"
+else
+    BUILD_DIR="$DATA_DIR"
+fi
 
 # --- Config file parsing (simple TOML subset) ---
 
@@ -104,6 +123,9 @@ cwd_needs_mount() {
 
 cmd_build() {
     require_podman
+    if [[ ! -f "${BUILD_DIR}/Containerfile" || ! -f "${BUILD_DIR}/entrypoint.sh" ]]; then
+        die "Build files (Containerfile, entrypoint.sh) not found in ${BUILD_DIR}. Run 'claude-pod install' first."
+    fi
     local shell_name
     shell_name=$(basename "${SHELL:-bash}")
     # Prefer getent if available, but don't fail if it's missing
@@ -120,7 +142,7 @@ cmd_build() {
         --build-arg "USER_UID=$(id -u)" \
         --build-arg "USER_GID=$(id -g)" \
         --build-arg "USER_SHELL=${shell_name}" \
-        "$SCRIPT_DIR"
+        "$BUILD_DIR"
 }
 
 cmd_run() {
@@ -294,11 +316,56 @@ cmd_clean() {
     echo "Done."
 }
 
+cmd_install() {
+    require_podman
+
+    local ref="main"
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --ref) [[ $# -lt 2 ]] && die "Flag --ref requires a value"; ref="$2"; shift 2 ;;
+            *) die "Unknown install flag: $1" ;;
+        esac
+    done
+    local github_raw="https://raw.githubusercontent.com/xukai92/claude-pod/${ref}"
+
+    mkdir -p "$DATA_DIR"
+    mkdir -p "${HOME}/.local/bin"
+
+    # Determine source: local clone or download from GitHub
+    if [[ -n "$SCRIPT_DIR" && -f "${SCRIPT_DIR}/Containerfile" && -f "${SCRIPT_DIR}/entrypoint.sh" ]]; then
+        echo "Installing from local source (${SCRIPT_DIR})..."
+        cp "${SCRIPT_DIR}/entrypoint.sh" "$DATA_DIR/"
+        cp "${SCRIPT_DIR}/Containerfile" "$DATA_DIR/"
+        cp "${SCRIPT_DIR}/claude-pod" "$DATA_DIR/"
+    else
+        command -v curl >/dev/null 2>&1 || die "curl is required for remote install."
+        echo "Downloading claude-pod from GitHub (ref: ${ref})..."
+        curl -fsSL "${github_raw}/claude-pod" -o "$DATA_DIR/claude-pod"
+        curl -fsSL "${github_raw}/entrypoint.sh" -o "$DATA_DIR/entrypoint.sh"
+        curl -fsSL "${github_raw}/Containerfile" -o "$DATA_DIR/Containerfile"
+    fi
+
+    # Remove any existing symlink before copying (cp/install follow symlinks)
+    rm -f "${HOME}/.local/bin/claude-pod"
+    install -m 755 "$DATA_DIR/claude-pod" "${HOME}/.local/bin/claude-pod"
+
+    echo "Installed claude-pod to ~/.local/bin/claude-pod"
+
+    # Check if ~/.local/bin is in PATH
+    if ! echo "${PATH:-}" | tr ':' '\n' | grep -qx "${HOME}/.local/bin"; then
+        echo "warning: ~/.local/bin is not in your PATH. Add it to your shell profile." >&2
+    fi
+
+    # Build the container image using the staged files (not the clone)
+    BUILD_DIR="$DATA_DIR"
+    echo ""
+    cmd_build
+}
+
 # --- Main ---
 
-require_podman
-
 case "${1:-}" in
+    install) shift; cmd_install "$@" ;;
     build) shift; cmd_build "$@" ;;
     run)   shift; cmd_run "$@" ;;
     shell) shift; cmd_shell "$@" ;;
@@ -314,6 +381,7 @@ Unrecognized flags are forwarded to Claude Code.
 claude-pod flags must come before Claude Code flags.
 
 Commands:
+  install [--ref <ref>] Install claude-pod to ~/.local/bin and build image
   build                Build the container image
   run [flags] [-- <claude args>]
                        Start an interactive Claude Code session
