@@ -55,7 +55,7 @@ Optional: `~/.config/claude-pod/config.toml`
 [defaults]
 # Notification command — receives $WORKSPACE and $EXIT_CODE as env vars
 # (--notify <topic> is a shorthand for ntfy.sh and overrides this)
-notify_command = "curl -s -d 'Claude done in $WORKSPACE (exit $EXIT_CODE)' https://ntfy.sh/my-topic"
+notify_command = "curl -s -d \"Claude done in $WORKSPACE (exit $EXIT_CODE)\" https://ntfy.sh/my-topic"
 
 # Extra volumes to mount
 extra_volumes = ["/data/shared:/data/shared:ro"]

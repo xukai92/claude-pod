@@ -96,6 +96,15 @@ cmd_run() {
 
     # Default notify command from config
     notify_cmd=$(cfg_get "defaults" "notify_command")
+    # Backward-compatible fallback for legacy notify_topic
+    if [[ -z "$notify_cmd" ]]; then
+        local legacy_topic
+        legacy_topic=$(cfg_get "defaults" "notify_topic") || true
+        if [[ -n "${legacy_topic:-}" ]]; then
+            notify_cmd="curl -s -d \"Claude Code finished in \$WORKSPACE (exit \$EXIT_CODE)\" https://ntfy.sh/${legacy_topic}"
+            echo "warning: 'defaults.notify_topic' is deprecated; use 'defaults.notify_command' instead." >&2
+        fi
+    fi
 
     # Parse flags
     while [[ $# -gt 0 ]]; do
@@ -104,7 +113,11 @@ cmd_run() {
             --network=*)     network="${1#--network=}"; shift ;;
             --notify)
                 # Shorthand for ntfy.sh: --notify <topic>
-                notify_cmd="curl -s -d \"Claude Code finished in \$WORKSPACE (exit \$EXIT_CODE)\" https://ntfy.sh/$2"
+                local topic="$2"
+                if [[ ! "$topic" =~ ^[A-Za-z0-9._-]+$ ]]; then
+                    die "Invalid notify topic '$topic'. Allowed characters: letters, digits, '.', '_', '-'"
+                fi
+                notify_cmd="curl -s -d \"Claude Code finished in \$WORKSPACE (exit \$EXIT_CODE)\" https://ntfy.sh/${topic}"
                 shift 2 ;;
             --notify-cmd)    notify_cmd="$2"; shift 2 ;;
             -wd|--writable-dir)  writable_dirs+=("$2"); shift 2 ;;
