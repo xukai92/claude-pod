@@ -113,15 +113,15 @@ When developing locally, you can run `claude-pod` directly from the clone withou
 
 If you previously ran `install`, the installed copy in `~/.local/bin` is independent of the clone. Run `./claude-pod install` again to update it with your local changes.
 
-To test the one-liner install from a branch, use the GitHub API to bypass CDN caching:
+To test the one-liner install from a branch, use the GitHub API to bypass CDN caching and `--ref` to download all files from the same branch:
 
 ```bash
 curl -fsSL -H "Accept: application/vnd.github.v3.raw" \
   "https://api.github.com/repos/xukai92/claude-pod/contents/claude-pod?ref=<branch>" \
-  | bash -s -- install
+  | bash -s -- install --ref <branch>
 ```
 
-Note: `raw.githubusercontent.com` caches aggressively and query-string cache busting does not work.
+Note: `raw.githubusercontent.com` caches aggressively and query-string cache busting does not work. The `--ref` flag ensures `entrypoint.sh` and `Containerfile` are also fetched from the branch.
 
 ## License
 
