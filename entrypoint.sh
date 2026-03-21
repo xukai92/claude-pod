@@ -12,6 +12,18 @@ if [ ! -x "$USER_SHELL" ]; then
     USER_SHELL=/bin/bash
 fi
 
+# Copy .claude.json from ro staging mount to writable $HOME.
+# With per-item home mounts, $HOME/.claude.json lives on the writable
+# container layer. Changes won't sync back to host.
+if [ -f /mnt/.claude.json ]; then
+    cp /mnt/.claude.json "$HOME/.claude.json"
+fi
+
+# If CLAUDE_POD_SHELL is set, drop into an interactive shell instead of claude
+if [ -n "${CLAUDE_POD_SHELL:-}" ]; then
+    exec "$USER_SHELL" -l
+fi
+
 # Run claude through a login shell so PATH and env are set up.
 # Use "$@" to preserve argument boundaries safely.
 case "$USER_SHELL" in
