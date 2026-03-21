@@ -113,6 +113,16 @@ When developing locally, you can run `claude-pod` directly from the clone withou
 
 If you previously ran `install`, the installed copy in `~/.local/bin` is independent of the clone. Run `./claude-pod install` again to update it with your local changes.
 
+To test the one-liner install from a branch, use the GitHub API to bypass CDN caching:
+
+```bash
+curl -fsSL -H "Accept: application/vnd.github.v3.raw" \
+  "https://api.github.com/repos/xukai92/claude-pod/contents/claude-pod?ref=<branch>" \
+  | bash -s -- install
+```
+
+Note: `raw.githubusercontent.com` caches aggressively and query-string cache busting does not work.
+
 ## License
 
 MIT
