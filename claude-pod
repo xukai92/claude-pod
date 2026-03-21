@@ -65,14 +65,14 @@ require_podman() {
 
 cmd_build() {
     require_podman
-    local user_shell
-    user_shell=$(getent passwd "$(whoami)" | cut -d: -f7)
-    echo "Building $IMAGE for $(whoami) (uid=$(id -u), gid=$(id -g), shell=$(basename "$user_shell"))..."
+    local shell_name
+    shell_name=$(basename "$(getent passwd "$(whoami)" | cut -d: -f7)")
+    echo "Building $IMAGE for $(whoami) (uid=$(id -u), gid=$(id -g), shell=${shell_name})..."
     podman build -t "$IMAGE" \
         --build-arg "USERNAME=$(whoami)" \
         --build-arg "USER_UID=$(id -u)" \
         --build-arg "USER_GID=$(id -g)" \
-        --build-arg "USER_SHELL=${user_shell}" \
+        --build-arg "USER_SHELL=${shell_name}" \
         "$SCRIPT_DIR"
 }
 

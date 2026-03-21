@@ -3,7 +3,7 @@ FROM registry.fedoraproject.org/fedora:latest
 ARG USERNAME
 ARG USER_UID
 ARG USER_GID
-ARG USER_SHELL=/usr/bin/fish
+ARG USER_SHELL=fish
 
 # Runtime deps and tools (all three shells installed so any can be used)
 RUN dnf install -y \
@@ -22,8 +22,9 @@ RUN dnf install -y \
     && dnf clean all
 
 # Create user matching the host user (after shell packages are installed)
+# Resolve shell name to its path inside the container (host path may differ)
 RUN groupadd -g ${USER_GID} ${USERNAME} && \
-    useradd -m -u ${USER_UID} -g ${USER_GID} -s ${USER_SHELL} ${USERNAME}
+    useradd -m -u ${USER_UID} -g ${USER_GID} -s "$(which ${USER_SHELL})" ${USERNAME}
 
 # Entrypoint wrapper: runs Claude, then optionally notifies via ntfy
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
