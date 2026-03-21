@@ -3,7 +3,7 @@
 
 # Bail out early if not running under bash (POSIX-compatible check so sh shows a clear error)
 if [ -z "${BASH_VERSION:-}" ]; then
-    echo "error: claude-pod requires bash. Run with: bash -s -- install" >&2
+    echo "error: claude-pod requires bash. Run with: bash claude-pod <command>" >&2
     exit 1
 fi
 
@@ -352,7 +352,7 @@ cmd_install() {
     echo "Installed claude-pod to ~/.local/bin/claude-pod"
 
     # Check if ~/.local/bin is in PATH
-    if ! echo "$PATH" | tr ':' '\n' | grep -qx "${HOME}/.local/bin"; then
+    if ! echo "${PATH:-}" | tr ':' '\n' | grep -qx "${HOME}/.local/bin"; then
         echo "warning: ~/.local/bin is not in your PATH. Add it to your shell profile." >&2
     fi
 
