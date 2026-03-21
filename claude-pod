@@ -65,11 +65,22 @@ require_podman() {
 
 cmd_build() {
     require_podman
-    echo "Building $IMAGE for $(whoami) (uid=$(id -u), gid=$(id -g))..."
+    local shell_name
+    shell_name=$(basename "${SHELL:-bash}")
+    # Prefer getent if available, but don't fail if it's missing
+    if command -v getent >/dev/null 2>&1; then
+        shell_name=$(basename "$(getent passwd "$(whoami)" | cut -d: -f7)") || shell_name=$(basename "${SHELL:-bash}")
+    fi
+    case "$shell_name" in
+        bash|zsh|fish) ;;
+        *) echo "warning: unsupported shell '$shell_name', defaulting to bash" >&2; shell_name=bash ;;
+    esac
+    echo "Building $IMAGE for $(whoami) (uid=$(id -u), gid=$(id -g), shell=${shell_name})..."
     podman build -t "$IMAGE" \
         --build-arg "USERNAME=$(whoami)" \
         --build-arg "USER_UID=$(id -u)" \
         --build-arg "USER_GID=$(id -g)" \
+        --build-arg "USER_SHELL=${shell_name}" \
         "$SCRIPT_DIR"
 }
 
