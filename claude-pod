@@ -130,7 +130,8 @@ cmd_run() {
                 [[ $# -lt 2 ]] && die "Flag --writable-dir requires a directory"
                 writable_dirs+=("$2"); shift 2 ;;
             --)              shift; claude_args=("$@"); break ;;
-            *)               die "Unknown flag: $1" ;;
+            -*)              claude_args=("$@"); break ;;
+            *)               die "Unknown command: $1. See 'claude-pod --help'." ;;
         esac
     done
 
@@ -268,6 +269,8 @@ case "${1:-}" in
 Usage: claude-pod [command] [options]
 
 Running with no command starts an interactive Claude Code session (same as 'run').
+Unrecognized flags are forwarded to Claude Code.
+claude-pod flags must come before Claude Code flags.
 
 Commands:
   build                Build the container image
