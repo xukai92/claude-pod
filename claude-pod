@@ -7,8 +7,13 @@ CONFIG_FILE="${HOME}/.config/claude-pod/config.toml"
 CONTAINER_NAME_PREFIX="claude-pod"
 DATA_DIR="${HOME}/.local/share/claude-pod"
 GITHUB_RAW="https://raw.githubusercontent.com/xukai92/claude-pod/main"
+# Bail out early if not running under bash (e.g. piped to sh instead of bash)
+if [[ -z "${BASH_VERSION:-}" ]]; then
+    echo "error: claude-pod requires bash. Run with: bash -s -- install" >&2
+    exit 1
+fi
 # Resolve the real path of this script (follows symlinks) so build works from any directory
-# When piped from curl (sh -s), BASH_SOURCE[0] is empty — fall back gracefully
+# When piped from curl (bash -s), BASH_SOURCE[0] is empty — fall back gracefully
 if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]]; then
     SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 else
@@ -117,6 +122,9 @@ cwd_needs_mount() {
 
 cmd_build() {
     require_podman
+    if [[ ! -f "${BUILD_DIR}/Containerfile" ]]; then
+        die "Build files not found in ${BUILD_DIR}. Run 'claude-pod install' first."
+    fi
     local shell_name
     shell_name=$(basename "${SHELL:-bash}")
     # Prefer getent if available, but don't fail if it's missing
@@ -308,12 +316,7 @@ cmd_clean() {
 }
 
 cmd_install() {
-    # Check for podman
-    if ! command -v podman >/dev/null 2>&1; then
-        echo "Podman is not installed."
-        echo "Install it from https://podman.io/docs/installation"
-        exit 1
-    fi
+    require_podman
 
     mkdir -p "$DATA_DIR"
     mkdir -p "${HOME}/.local/bin"
@@ -339,7 +342,7 @@ cmd_install() {
 
     # Check if ~/.local/bin is in PATH
     if ! echo "$PATH" | tr ':' '\n' | grep -qx "${HOME}/.local/bin"; then
-        echo "warning: ~/.local/bin is not in your PATH. Add it to your shell profile."
+        echo "warning: ~/.local/bin is not in your PATH. Add it to your shell profile." >&2
     fi
 
     # Build the container image
