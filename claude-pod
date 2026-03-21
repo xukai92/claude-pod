@@ -116,14 +116,19 @@ cmd_run() {
             --network=*)     network="${1#--network=}"; shift ;;
             --notify)
                 # Shorthand for ntfy.sh: --notify <topic>
+                [[ $# -lt 2 ]] && die "Flag --notify requires a topic"
                 local topic="$2"
                 if [[ ! "$topic" =~ ^[A-Za-z0-9._-]+$ ]]; then
                     die "Invalid notify topic '$topic'. Allowed characters: letters, digits, '.', '_', '-'"
                 fi
                 notify_cmd="curl -s -d \"Claude Code finished in \$WORKSPACE (exit \$EXIT_CODE)\" https://ntfy.sh/${topic}"
                 shift 2 ;;
-            --notify-cmd)    notify_cmd="$2"; shift 2 ;;
-            -wd|--writable-dir)  writable_dirs+=("$2"); shift 2 ;;
+            --notify-cmd)
+                [[ $# -lt 2 ]] && die "Flag --notify-cmd requires a command"
+                notify_cmd="$2"; shift 2 ;;
+            -wd|--writable-dir)
+                [[ $# -lt 2 ]] && die "Flag --writable-dir requires a directory"
+                writable_dirs+=("$2"); shift 2 ;;
             --)              shift; claude_args=("$@"); break ;;
             *)               die "Unknown flag: $1" ;;
         esac
