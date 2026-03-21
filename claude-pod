@@ -1,5 +1,12 @@
 #!/bin/bash
 # claude-pod — run Claude Code in a rootless Podman container
+
+# Bail out early if not running under bash (POSIX-compatible check so sh shows a clear error)
+if [ -z "${BASH_VERSION:-}" ]; then
+    echo "error: claude-pod requires bash. Run with: bash -s -- install" >&2
+    exit 1
+fi
+
 set -euo pipefail
 
 IMAGE="claude-pod:latest"
@@ -7,11 +14,6 @@ CONFIG_FILE="${HOME}/.config/claude-pod/config.toml"
 CONTAINER_NAME_PREFIX="claude-pod"
 DATA_DIR="${HOME}/.local/share/claude-pod"
 GITHUB_RAW="https://raw.githubusercontent.com/xukai92/claude-pod/main"
-# Bail out early if not running under bash (e.g. piped to sh instead of bash)
-if [[ -z "${BASH_VERSION:-}" ]]; then
-    echo "error: claude-pod requires bash. Run with: bash -s -- install" >&2
-    exit 1
-fi
 # Resolve the real path of this script (follows symlinks) so build works from any directory
 # When piped from curl (bash -s), BASH_SOURCE[0] is empty — fall back gracefully
 if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]]; then
@@ -346,7 +348,8 @@ cmd_install() {
         echo "warning: ~/.local/bin is not in your PATH. Add it to your shell profile." >&2
     fi
 
-    # Build the container image using the current process (BUILD_DIR is already set)
+    # Build the container image using the staged files (not the clone)
+    BUILD_DIR="$DATA_DIR"
     echo ""
     cmd_build
 }
