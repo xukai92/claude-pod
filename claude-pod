@@ -13,7 +13,6 @@ IMAGE="claude-pod:latest"
 CONFIG_FILE="${HOME}/.config/claude-pod/config.toml"
 CONTAINER_NAME_PREFIX="claude-pod"
 DATA_DIR="${HOME}/.local/share/claude-pod"
-GITHUB_RAW="https://raw.githubusercontent.com/xukai92/claude-pod/main"
 # Resolve the real path of this script (follows symlinks) so build works from any directory
 # When piped from curl (bash -s), BASH_SOURCE[0] is empty — fall back gracefully
 if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]]; then
@@ -320,6 +319,15 @@ cmd_clean() {
 cmd_install() {
     require_podman
 
+    local ref="main"
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --ref) [[ $# -lt 2 ]] && die "Flag --ref requires a value"; ref="$2"; shift 2 ;;
+            *) die "Unknown install flag: $1" ;;
+        esac
+    done
+    local github_raw="https://raw.githubusercontent.com/xukai92/claude-pod/${ref}"
+
     mkdir -p "$DATA_DIR"
     mkdir -p "${HOME}/.local/bin"
 
@@ -331,10 +339,10 @@ cmd_install() {
         cp "${SCRIPT_DIR}/claude-pod" "$DATA_DIR/"
     else
         command -v curl >/dev/null 2>&1 || die "curl is required for remote install."
-        echo "Downloading claude-pod from GitHub..."
-        curl -fsSL "${GITHUB_RAW}/claude-pod" -o "$DATA_DIR/claude-pod"
-        curl -fsSL "${GITHUB_RAW}/entrypoint.sh" -o "$DATA_DIR/entrypoint.sh"
-        curl -fsSL "${GITHUB_RAW}/Containerfile" -o "$DATA_DIR/Containerfile"
+        echo "Downloading claude-pod from GitHub (ref: ${ref})..."
+        curl -fsSL "${github_raw}/claude-pod" -o "$DATA_DIR/claude-pod"
+        curl -fsSL "${github_raw}/entrypoint.sh" -o "$DATA_DIR/entrypoint.sh"
+        curl -fsSL "${github_raw}/Containerfile" -o "$DATA_DIR/Containerfile"
     fi
 
     # Remove any existing symlink before copying (cp/install follow symlinks)
@@ -373,7 +381,7 @@ Unrecognized flags are forwarded to Claude Code.
 claude-pod flags must come before Claude Code flags.
 
 Commands:
-  install              Install claude-pod to ~/.local/bin and build image
+  install [--ref <ref>] Install claude-pod to ~/.local/bin and build image
   build                Build the container image
   run [flags] [-- <claude args>]
                        Start an interactive Claude Code session
