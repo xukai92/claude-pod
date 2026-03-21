@@ -4,11 +4,11 @@ Run [Claude Code](https://docs.anthropic.com/en/docs/claude-code) in a rootless 
 
 ## How it works
 
-Your home directory is mounted **read-only** into the container, with writable overlays for `~/.claude`, `~/.config`, and `~/.local`. `~/.claude.json` is copied into the container at startup (changes don't sync back). This means Claude picks up your shell config, SSH keys, git credentials, and toolchain automatically — without being able to modify most of them.
+Each item under your home directory is mounted individually — most are **read-only**, with `~/.claude`, `~/.config`, and `~/.local` mounted read-write. `~/.claude.json` is copied into the container at startup (changes don't sync back). The directory containing your cwd is also mounted read-write.
 
 The current working directory is mounted **read-write** at the same absolute path, so file paths in Claude's output match the host. (If cwd is `$HOME` or inside an existing writable overlay, the extra mount is skipped to avoid conflicts.)
 
-No Claude Code or bun is installed in the image — they're picked up from the host via the read-only home mount. The entrypoint runs through your login shell (bash, zsh, or fish) to inherit your PATH.
+No Claude Code or bun is installed in the image — they're picked up from the host via the home bind mounts. The entrypoint runs through your login shell (bash, zsh, or fish) to inherit your PATH.
 
 ## Quick start
 
@@ -67,7 +67,7 @@ extra_env = ["GITHUB_TOKEN"]
 ## Security model
 
 - **Rootless containers** via `podman --userns=keep-id` — no privilege escalation.
-- **Home is read-only** — Claude can read your config/keys but can't modify them. Only `~/.claude`, `~/.config`, and `~/.local` are writable. `~/.claude.json` is copied in (changes don't sync back).
+- **Home is mostly read-only** — each item under `$HOME` is mounted individually. `~/.claude`, `~/.config`, `~/.local`, and cwd's parent are writable; everything else is read-only. `~/.claude.json` is copied in at startup (changes don't sync back).
 - **CWD is read-write** — Claude can only modify files in the directory you launch from (plus any `-wd` paths).
 - **SELinux label=disable** instead of `:Z` to avoid relabeling host directories.
 - Authentication works via OAuth credentials in `~/.claude` or `ANTHROPIC_API_KEY` env var — nothing is baked into the image.
