@@ -5,8 +5,21 @@ set -euo pipefail
 IMAGE="claude-pod:latest"
 CONFIG_FILE="${HOME}/.config/claude-pod/config.toml"
 CONTAINER_NAME_PREFIX="claude-pod"
+DATA_DIR="${HOME}/.local/share/claude-pod"
+GITHUB_RAW="https://raw.githubusercontent.com/xukai92/claude-pod/main"
 # Resolve the real path of this script (follows symlinks) so build works from any directory
-SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+# When piped from curl (sh -s), BASH_SOURCE[0] is empty — fall back gracefully
+if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]]; then
+    SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+else
+    SCRIPT_DIR=""
+fi
+# For build context, prefer SCRIPT_DIR if it has the Containerfile, else fall back to DATA_DIR
+if [[ -n "$SCRIPT_DIR" && -f "${SCRIPT_DIR}/Containerfile" ]]; then
+    BUILD_DIR="$SCRIPT_DIR"
+else
+    BUILD_DIR="$DATA_DIR"
+fi
 
 # --- Config file parsing (simple TOML subset) ---
 
@@ -120,7 +133,7 @@ cmd_build() {
         --build-arg "USER_UID=$(id -u)" \
         --build-arg "USER_GID=$(id -g)" \
         --build-arg "USER_SHELL=${shell_name}" \
-        "$SCRIPT_DIR"
+        "$BUILD_DIR"
 }
 
 cmd_run() {
@@ -294,11 +307,50 @@ cmd_clean() {
     echo "Done."
 }
 
+cmd_install() {
+    # Check for podman
+    if ! command -v podman >/dev/null 2>&1; then
+        echo "Podman is not installed."
+        echo "Install it from https://podman.io/docs/installation"
+        exit 1
+    fi
+
+    mkdir -p "$DATA_DIR"
+    mkdir -p "${HOME}/.local/bin"
+
+    # Determine source: local clone or download from GitHub
+    if [[ -n "$SCRIPT_DIR" && -f "${SCRIPT_DIR}/Containerfile" && -f "${SCRIPT_DIR}/entrypoint.sh" ]]; then
+        echo "Installing from local source (${SCRIPT_DIR})..."
+        cp "${SCRIPT_DIR}/claude-pod" "$DATA_DIR/"
+        cp "${SCRIPT_DIR}/entrypoint.sh" "$DATA_DIR/"
+        cp "${SCRIPT_DIR}/Containerfile" "$DATA_DIR/"
+    else
+        echo "Downloading claude-pod from GitHub..."
+        curl -fsSL "${GITHUB_RAW}/claude-pod" -o "$DATA_DIR/claude-pod"
+        curl -fsSL "${GITHUB_RAW}/entrypoint.sh" -o "$DATA_DIR/entrypoint.sh"
+        curl -fsSL "${GITHUB_RAW}/Containerfile" -o "$DATA_DIR/Containerfile"
+    fi
+
+    # Install the script to ~/.local/bin
+    cp "$DATA_DIR/claude-pod" "${HOME}/.local/bin/claude-pod"
+    chmod +x "${HOME}/.local/bin/claude-pod"
+
+    echo "Installed claude-pod to ~/.local/bin/claude-pod"
+
+    # Check if ~/.local/bin is in PATH
+    if ! echo "$PATH" | tr ':' '\n' | grep -qx "${HOME}/.local/bin"; then
+        echo "warning: ~/.local/bin is not in your PATH. Add it to your shell profile."
+    fi
+
+    # Build the container image
+    echo ""
+    "${HOME}/.local/bin/claude-pod" build
+}
+
 # --- Main ---
 
-require_podman
-
 case "${1:-}" in
+    install) shift; cmd_install "$@" ;;
     build) shift; cmd_build "$@" ;;
     run)   shift; cmd_run "$@" ;;
     shell) shift; cmd_shell "$@" ;;
@@ -314,6 +366,7 @@ Unrecognized flags are forwarded to Claude Code.
 claude-pod flags must come before Claude Code flags.
 
 Commands:
+  install              Install claude-pod to ~/.local/bin and build image
   build                Build the container image
   run [flags] [-- <claude args>]
                        Start an interactive Claude Code session
