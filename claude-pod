@@ -61,50 +61,15 @@ require_podman() {
     command -v podman >/dev/null 2>&1 || die "Podman is not installed."
 }
 
-# Mount each item under $HOME with appropriate permissions.
-# Items that contain the cwd are mounted rw; .claude.json is staged
-# at /mnt for the entrypoint to copy; known writable dirs are rw;
-# everything else is ro.
-mount_home_items() {
-    local -n _args=$1
-    local cwd="$2"
-    # Resolve which top-level home dir contains cwd (if any)
-    local cwd_top=""
-    if [[ "$cwd" == "$HOME"/* ]]; then
-        cwd_top="${HOME}/${cwd#"$HOME"/}"
-        cwd_top="${HOME}/${cwd_top#"$HOME"/}"
-        cwd_top="${cwd_top%%/*}"
-        # Extract just the first path component under $HOME
-        local rel="${cwd#"$HOME"/}"
-        cwd_top="${HOME}/${rel%%/*}"
-    fi
-
-    for item in "${HOME}"/.[!.]* "${HOME}"/..?* "${HOME}"/*; do
-        [[ -e "$item" ]] || continue
-        local base
-        base=$(basename "$item")
-        case "$base" in
-            .claude.json)
-                # Stage at /mnt — entrypoint copies to writable $HOME
-                _args+=(-v "${item}:/mnt/.claude.json:ro") ;;
-            .claude|.config|.local)
-                _args+=(-v "${item}:${item}") ;;
-            *)
-                if [[ "$item" == "$cwd_top" ]]; then
-                    _args+=(-v "${item}:${item}")
-                else
-                    _args+=(-v "${item}:${item}:ro")
-                fi ;;
-        esac
-    done
-}
-
-# Check if cwd needs its own rw mount on top of existing mounts.
-# Paths under $HOME are handled by mount_home_items. Paths at $HOME
-# itself don't need a mount. Only paths outside $HOME need one.
+# Check if cwd needs its own rw mount. Skip if it overlaps with $HOME
+# (already mounted ro) or a writable overlay.
 cwd_needs_mount() {
     local cwd="$1"
-    [[ "$cwd" != "$HOME" && "$cwd" != "$HOME"/* ]]
+    [[ "$cwd" == "$HOME" ]] && return 1
+    [[ "$cwd" == "$HOME"/.claude || "$cwd" == "$HOME"/.claude/* ]] && return 1
+    [[ "$cwd" == "$HOME"/.config || "$cwd" == "$HOME"/.config/* ]] && return 1
+    [[ "$cwd" == "$HOME"/.local || "$cwd" == "$HOME"/.local/* ]] && return 1
+    return 0
 }
 
 # --- Subcommands ---
@@ -192,12 +157,21 @@ cmd_run() {
         --userns=keep-id
         # Disable SELinux relabeling — :Z would privately relabel host dirs
         --security-opt label=disable
+        # Mount home read-only, with writable overlays for dirs that need writes
+        -v "${HOME}:${HOME}:ro"
+        -v "${HOME}/.claude:${HOME}/.claude"
+        -v "${HOME}/.config:${HOME}/.config"
+        -v "${HOME}/.local:${HOME}/.local"
         -w "${cwd}"
     )
 
-    mount_home_items args "$cwd"
+    # .claude.json: stage at /mnt, entrypoint copies to writable container layer.
+    # File bind-mounts at the real path break on atomic writes (EROFS).
+    if [[ -f "${HOME}/.claude.json" ]]; then
+        args+=(-v "${HOME}/.claude.json:/mnt/.claude.json:ro")
+    fi
 
-    # Mount cwd read-write if outside $HOME
+    # Mount cwd read-write unless it overlaps with an existing mount
     if cwd_needs_mount "$cwd"; then
         args+=(-v "${cwd}:${cwd}")
     fi
@@ -258,12 +232,18 @@ cmd_shell() {
         -it --rm
         --userns=keep-id
         --security-opt label=disable
+        -v "${HOME}:${HOME}:ro"
+        -v "${HOME}/.claude:${HOME}/.claude"
+        -v "${HOME}/.config:${HOME}/.config"
+        -v "${HOME}/.local:${HOME}/.local"
         -w "${cwd}"
     )
 
-    mount_home_items shell_args "$cwd"
+    if [[ -f "${HOME}/.claude.json" ]]; then
+        shell_args+=(-v "${HOME}/.claude.json:/mnt/.claude.json:ro")
+    fi
 
-    # Mount cwd read-write if outside $HOME
+    # Mount cwd read-write unless it overlaps with an existing mount
     if cwd_needs_mount "$cwd"; then
         shell_args+=(-v "${cwd}:${cwd}")
     fi

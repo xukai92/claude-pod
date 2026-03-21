@@ -10,7 +10,7 @@ A Podman wrapper for running Claude Code in a rootless container sandbox.
 
 ## Key design decisions
 
-- **Home contents mounted individually** — each item under `$HOME` is bind-mounted separately. `.claude`, `.config`, `.local` are rw; `.claude.json` is skipped (container creates fresh); everything else is ro.
+- **Home mounted read-only** with writable overlays for `~/.claude`, `~/.config`, `~/.local`. `~/.claude.json` is staged at `/mnt` and copied by the entrypoint (file bind-mounts break on atomic writes).
 - **CWD mounted at the same absolute path** inside the container so file paths match between host and container.
 - **`--userns=keep-id`** maps host UID into container. The Containerfile creates a user matching the host user at build time via `--build-arg`.
 - **`--security-opt label=disable`** to avoid SELinux relabeling host directories (`:Z` caused credential corruption).
