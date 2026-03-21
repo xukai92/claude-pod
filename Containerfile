@@ -3,7 +3,7 @@ FROM registry.fedoraproject.org/fedora:latest
 ARG USERNAME
 ARG USER_UID
 ARG USER_GID
-ARG USER_SHELL=fish
+ARG USER_SHELL=bash
 
 # Runtime deps and tools (all three shells installed so any can be used)
 RUN dnf install -y \
