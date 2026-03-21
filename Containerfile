@@ -3,14 +3,17 @@ FROM registry.fedoraproject.org/fedora:latest
 ARG USERNAME
 ARG USER_UID
 ARG USER_GID
+ARG USER_SHELL=/usr/bin/fish
 
 # Create user matching the host user
 RUN groupadd -g ${USER_GID} ${USERNAME} && \
-    useradd -m -u ${USER_UID} -g ${USER_GID} -s /usr/bin/fish ${USERNAME}
+    useradd -m -u ${USER_UID} -g ${USER_GID} -s ${USER_SHELL} ${USERNAME}
 
-# Runtime deps and tools
+# Runtime deps and tools (all three shells installed so any can be used)
 RUN dnf install -y \
     git \
+    bash \
+    zsh \
     fish \
     gcc \
     gcc-c++ \
