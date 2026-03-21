@@ -1,0 +1,257 @@
+#!/bin/bash
+# claude-pod — run Claude Code in a rootless Podman container
+set -euo pipefail
+
+IMAGE="claude-pod:latest"
+CONFIG_FILE="${HOME}/.config/claude-pod/config.toml"
+CONTAINER_NAME_PREFIX="claude-pod"
+# Resolve the real path of this script (follows symlinks) so build works from any directory
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+
+# --- Config file parsing (simple TOML subset) ---
+
+cfg_get() {
+    # Extract a key from the config file. Handles simple key = "value" pairs.
+    local section="$1" key="$2"
+    if [[ -f "$CONFIG_FILE" ]]; then
+        awk -v section="[$section]" -v key="$key" '
+            $0 == section { in_section=1; next }
+            /^\[/ { in_section=0 }
+            in_section && $1 == key {
+                # Strip key = "value" down to value
+                sub(/^[^=]*=\s*/, "")
+                gsub(/^"|"$/, "")
+                print
+            }
+        ' "$CONFIG_FILE"
+    fi
+}
+
+cfg_get_array() {
+    # Extract a TOML array value as newline-separated items.
+    local section="$1" key="$2"
+    if [[ -f "$CONFIG_FILE" ]]; then
+        awk -v section="[$section]" -v key="$key" '
+            $0 == section { in_section=1; next }
+            /^\[/ { in_section=0 }
+            in_section && $1 == key {
+                # Extract the array contents between [ ]
+                match($0, /\[(.+)\]/, arr)
+                n = split(arr[1], items, ",")
+                for (i=1; i<=n; i++) {
+                    gsub(/^[ \t"]+|[ \t"]+$/, "", items[i])
+                    if (items[i] != "") print items[i]
+                }
+            }
+        ' "$CONFIG_FILE"
+    fi
+}
+
+# --- Helpers ---
+
+die() { echo "error: $*" >&2; exit 1; }
+
+require_image() {
+    if ! podman image exists "$IMAGE" 2>/dev/null; then
+        die "Image '$IMAGE' not found. Run 'claude-pod build' first."
+    fi
+}
+
+require_podman() {
+    command -v podman >/dev/null 2>&1 || die "Podman is not installed."
+}
+
+# --- Subcommands ---
+
+cmd_build() {
+    require_podman
+    echo "Building $IMAGE for $(whoami) (uid=$(id -u), gid=$(id -g))..."
+    podman build -t "$IMAGE" \
+        --build-arg "USERNAME=$(whoami)" \
+        --build-arg "USER_UID=$(id -u)" \
+        --build-arg "USER_GID=$(id -g)" \
+        "$SCRIPT_DIR"
+}
+
+cmd_run() {
+    require_podman
+    require_image
+
+    local detach=false
+    local network=""
+    local notify_topic=""
+    local writable_dirs=()
+    local claude_args=()
+
+    # Default notify topic from config
+    notify_topic=$(cfg_get "defaults" "notify_topic")
+
+    # Parse flags
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --detach)        detach=true; shift ;;
+            --network=*)     network="${1#--network=}"; shift ;;
+            --notify)        notify_topic="$2"; shift 2 ;;
+            -wd|--writable-dir)  writable_dirs+=("$2"); shift 2 ;;
+            --)              shift; claude_args=("$@"); break ;;
+            *)               die "Unknown flag: $1" ;;
+        esac
+    done
+
+    local cwd
+    cwd="$(pwd)"
+
+    # Core podman args
+    local args=(
+        --rm
+        --name "${CONTAINER_NAME_PREFIX}-$(date +%s)"
+        # Map host UID/GID into container so file ownership is correct
+        --userns=keep-id
+        # Disable SELinux relabeling — :Z would privately relabel host dirs
+        --security-opt label=disable
+        # Mount entire home read-only (resolves symlinks, hooks, dotfiles, etc.)
+        -v "${HOME}:${HOME}:ro"
+        # Overlay writable dirs on top of the ro home mount
+        -v "${HOME}/.claude:${HOME}/.claude"
+        -v "${HOME}/.claude.json:${HOME}/.claude.json"
+        -v "${HOME}/.local/share:${HOME}/.local/share"
+        # Mount cwd read-write for the actual workspace
+        -v "${cwd}:${cwd}"
+        -w "${cwd}"
+    )
+
+    # Mount Homebrew (linuxbrew) if present
+    if [[ -n "${HOMEBREW_PREFIX:-}" && -d "$HOMEBREW_PREFIX" ]]; then
+        args+=(-v "${HOMEBREW_PREFIX}:${HOMEBREW_PREFIX}:ro")
+    fi
+
+    # Pass through API key if set (not required — OAuth creds in ~/.claude work too)
+    if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
+        args+=(-e ANTHROPIC_API_KEY)
+    fi
+
+    # Notify topic (passed as env var, entrypoint.sh picks it up)
+    if [[ -n "$notify_topic" ]]; then
+        args+=(-e "NTFY_TOPIC=${notify_topic}")
+    fi
+
+    # Network mode
+    if [[ -n "$network" ]]; then
+        args+=(--network="$network")
+    fi
+
+    # Extra env vars from config
+    while IFS= read -r var; do
+        [[ -n "$var" ]] && args+=(-e "$var")
+    done < <(cfg_get_array "defaults" "extra_env")
+
+    # Extra writable dirs (overlaid on top of the ro home mount)
+    for dir in "${writable_dirs[@]}"; do
+        args+=(-v "${dir}:${dir}")
+    done
+
+    # Extra volumes from config
+    while IFS= read -r vol; do
+        [[ -n "$vol" ]] && args+=(-v "$vol")
+    done < <(cfg_get_array "defaults" "extra_volumes")
+
+    if $detach; then
+        args+=(-d)
+        podman run "${args[@]}" "$IMAGE" "${claude_args[@]}"
+    else
+        # Interactive TTY for normal usage
+        args+=(-it)
+        podman run "${args[@]}" "$IMAGE" "${claude_args[@]}"
+    fi
+}
+
+cmd_shell() {
+    require_podman
+    require_image
+
+    local cwd
+    cwd="$(pwd)"
+
+    local shell_args=(
+        -it --rm
+        --userns=keep-id
+        --security-opt label=disable
+        -v "${HOME}:${HOME}:ro"
+        -v "${HOME}/.claude:${HOME}/.claude"
+        -v "${HOME}/.claude.json:${HOME}/.claude.json"
+        -v "${HOME}/.local/share:${HOME}/.local/share"
+        -v "${cwd}:${cwd}"
+        -w "${cwd}"
+    )
+
+    if [[ -n "${HOMEBREW_PREFIX:-}" && -d "$HOMEBREW_PREFIX" ]]; then
+        shell_args+=(-v "${HOMEBREW_PREFIX}:${HOMEBREW_PREFIX}:ro")
+    fi
+
+    podman run "${shell_args[@]}" --entrypoint /bin/bash "$IMAGE"
+}
+
+cmd_exec() {
+    require_podman
+    [[ $# -eq 0 ]] && die "Usage: claude-pod exec <command...>"
+
+    # Find the most recently started claude-pod container
+    local container
+    container=$(podman ps --filter "name=${CONTAINER_NAME_PREFIX}" --format '{{.Names}}' | head -1)
+    [[ -z "$container" ]] && die "No running claude-pod container found."
+
+    podman exec -it "$container" "$@"
+}
+
+cmd_ps() {
+    require_podman
+    podman ps --filter "name=${CONTAINER_NAME_PREFIX}" --format \
+        'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
+}
+
+cmd_clean() {
+    require_podman
+    echo "Removing claude-pod image..."
+    podman rmi -f "$IMAGE" 2>/dev/null || true
+    echo "Done."
+}
+
+# --- Main ---
+
+require_podman
+
+case "${1:-}" in
+    build) shift; cmd_build "$@" ;;
+    run)   shift; cmd_run "$@" ;;
+    shell) shift; cmd_shell "$@" ;;
+    exec)  shift; cmd_exec "$@" ;;
+    ps)    shift; cmd_ps "$@" ;;
+    clean) shift; cmd_clean "$@" ;;
+    -h|--help)
+        cat <<'EOF'
+Usage: claude-pod [command] [options]
+
+Running with no command starts an interactive Claude Code session (same as 'run').
+
+Commands:
+  build                Build the container image
+  run [flags] [-- <claude args>]
+                       Start an interactive Claude Code session
+  shell                Drop into a bash shell in the container
+  exec <command>       Run a command in a running container
+  ps                   List running claude-pod containers
+  clean                Remove volumes and image
+
+Run flags:
+  --detach             Run in background (print container ID)
+  --network=none       Disable all networking
+  --notify <topic>     Send ntfy.sh notification when session ends
+  -wd, --writable-dir <path>
+                       Mount a dir read-write (can be repeated)
+
+Config: ~/.config/claude-pod/config.toml
+EOF
+        exit 1
+        ;;
+    *)  cmd_run "$@" ;;
+esac
