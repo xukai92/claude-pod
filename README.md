@@ -102,6 +102,17 @@ cd claude-pod
 
 Both paths copy `claude-pod`, `entrypoint.sh`, and `Containerfile` to `~/.local/share/claude-pod/`, install the script to `~/.local/bin/claude-pod`, and build the container image.
 
+### Development
+
+When developing locally, you can run `claude-pod` directly from the clone without installing:
+
+```bash
+./claude-pod build   # uses Containerfile from the clone
+./claude-pod         # run a session
+```
+
+If you previously ran `install`, the installed copy in `~/.local/bin` is independent of the clone. Run `./claude-pod install` again to update it with your local changes.
+
 ## License
 
 MIT
