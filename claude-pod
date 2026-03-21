@@ -79,16 +79,25 @@ require_image() {
 suggest_podman_install() {
     echo "error: Podman is not installed." >&2
     local install_cmd=""
+    local sudo_prefix=""
+
+    # Only prefix sudo for non-root on Linux package managers
+    if [[ "$(id -u)" -ne 0 ]]; then
+        if command -v sudo >/dev/null 2>&1; then
+            sudo_prefix="sudo "
+        fi
+    fi
+
     if command -v dnf >/dev/null 2>&1; then
-        install_cmd="sudo dnf install -y podman"
+        install_cmd="${sudo_prefix}dnf install -y podman"
     elif command -v apt-get >/dev/null 2>&1; then
-        install_cmd="sudo apt-get install -y podman"
+        install_cmd="${sudo_prefix}apt-get install -y podman"
     elif command -v brew >/dev/null 2>&1; then
         install_cmd="brew install podman"
     elif command -v pacman >/dev/null 2>&1; then
-        install_cmd="sudo pacman -S podman"
+        install_cmd="${sudo_prefix}pacman -S podman"
     elif command -v zypper >/dev/null 2>&1; then
-        install_cmd="sudo zypper install -y podman"
+        install_cmd="${sudo_prefix}zypper install -y podman"
     fi
 
     if [[ -n "$install_cmd" ]]; then
@@ -98,6 +107,9 @@ suggest_podman_install() {
             read -rp "Install now? [y/N] " answer
             if [[ "$answer" =~ ^[Yy]$ ]]; then
                 $install_cmd || die "Podman installation failed."
+                if ! command -v podman >/dev/null 2>&1; then
+                    die "Podman was installed but is not in PATH. Try opening a new shell."
+                fi
                 return
             fi
         fi
