@@ -20,8 +20,8 @@ if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]]; then
 else
     SCRIPT_DIR=""
 fi
-# For build context, prefer SCRIPT_DIR if it has the Containerfile, else fall back to DATA_DIR
-if [[ -n "$SCRIPT_DIR" && -f "${SCRIPT_DIR}/Containerfile" ]]; then
+# For build context, prefer SCRIPT_DIR if it has both build files, else fall back to DATA_DIR
+if [[ -n "$SCRIPT_DIR" && -f "${SCRIPT_DIR}/Containerfile" && -f "${SCRIPT_DIR}/entrypoint.sh" ]]; then
     BUILD_DIR="$SCRIPT_DIR"
 else
     BUILD_DIR="$DATA_DIR"
