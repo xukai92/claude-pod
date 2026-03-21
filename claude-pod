@@ -101,6 +101,9 @@ cmd_run() {
         local legacy_topic
         legacy_topic=$(cfg_get "defaults" "notify_topic") || true
         if [[ -n "${legacy_topic:-}" ]]; then
+            if [[ ! "$legacy_topic" =~ ^[A-Za-z0-9._-]+$ ]]; then
+                die "Invalid notify topic '$legacy_topic' in config. Allowed characters: letters, digits, '.', '_', '-'"
+            fi
             notify_cmd="curl -s -d \"Claude Code finished in \$WORKSPACE (exit \$EXIT_CODE)\" https://ntfy.sh/${legacy_topic}"
             echo "warning: 'defaults.notify_topic' is deprecated; use 'defaults.notify_command' instead." >&2
         fi
