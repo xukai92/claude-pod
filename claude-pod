@@ -90,19 +90,23 @@ cmd_run() {
 
     local detach=false
     local network=""
-    local notify_topic=""
+    local notify_cmd=""
     local writable_dirs=()
     local claude_args=()
 
-    # Default notify topic from config
-    notify_topic=$(cfg_get "defaults" "notify_topic")
+    # Default notify command from config
+    notify_cmd=$(cfg_get "defaults" "notify_command")
 
     # Parse flags
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --detach)        detach=true; shift ;;
             --network=*)     network="${1#--network=}"; shift ;;
-            --notify)        notify_topic="$2"; shift 2 ;;
+            --notify)
+                # Shorthand for ntfy.sh: --notify <topic>
+                notify_cmd="curl -s -d \"Claude Code finished in \$WORKSPACE (exit \$EXIT_CODE)\" https://ntfy.sh/$2"
+                shift 2 ;;
+            --notify-cmd)    notify_cmd="$2"; shift 2 ;;
             -wd|--writable-dir)  writable_dirs+=("$2"); shift 2 ;;
             --)              shift; claude_args=("$@"); break ;;
             *)               die "Unknown flag: $1" ;;
@@ -141,9 +145,9 @@ cmd_run() {
         args+=(-e ANTHROPIC_API_KEY)
     fi
 
-    # Notify topic (passed as env var, entrypoint.sh picks it up)
-    if [[ -n "$notify_topic" ]]; then
-        args+=(-e "NTFY_TOPIC=${notify_topic}")
+    # Notification command (passed as env var, entrypoint.sh picks it up)
+    if [[ -n "$notify_cmd" ]]; then
+        args+=(-e "NOTIFY_CMD=${notify_cmd}")
     fi
 
     # Network mode
@@ -257,6 +261,7 @@ Run flags:
   --detach             Run in background (print container ID)
   --network=none       Disable all networking
   --notify <topic>     Send ntfy.sh notification when session ends
+  --notify-cmd <cmd>   Run custom command on exit ($WORKSPACE, $EXIT_CODE)
   -wd, --writable-dir <path>
                        Mount a dir read-write (can be repeated)
 

@@ -38,6 +38,7 @@ claude-pod
 | `--detach` | Run in background (print container ID) |
 | `--network=none` | Fully air-gapped session |
 | `--notify <topic>` | Send an [ntfy.sh](https://ntfy.sh) notification when the session ends |
+| `--notify-cmd <cmd>` | Run a custom command on exit (receives `$WORKSPACE` and `$EXIT_CODE` env vars) |
 | `-wd, --writable-dir <path>` | Mount an additional directory read-write (repeatable) |
 
 Pass arguments to Claude itself after `--`:
@@ -52,8 +53,9 @@ Optional: `~/.config/claude-pod/config.toml`
 
 ```toml
 [defaults]
-# Default ntfy topic (CLI --notify overrides)
-notify_topic = "my-claude-notifications"
+# Notification command — receives $WORKSPACE and $EXIT_CODE as env vars
+# (--notify <topic> is a shorthand for ntfy.sh and overrides this)
+notify_command = "curl -s -d 'Claude done in $WORKSPACE (exit $EXIT_CODE)' https://ntfy.sh/my-topic"
 
 # Extra volumes to mount
 extra_volumes = ["/data/shared:/data/shared:ro"]
