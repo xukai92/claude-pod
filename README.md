@@ -12,6 +12,8 @@ No Claude Code or bun is installed in the image — they're picked up from the h
 
 ## Quick start
 
+Requires [Podman](https://podman.io/docs/installation) (rootless). claude-pod will detect your package manager and offer to install it if missing.
+
 ```bash
 # Build the image (once, per user — encodes your UID/GID)
 claude-pod build
