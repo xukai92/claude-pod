@@ -24,6 +24,7 @@ claude-pod
 
 | Command | Description |
 |---------|-------------|
+| `claude-pod install` | Install claude-pod to `~/.local/bin` and build image |
 | `claude-pod build` | Build the container image for your user |
 | `claude-pod [run] [flags] [-- <claude args>]` | Start an interactive session (default command) |
 | `claude-pod shell` | Drop into a bash shell in the container |
@@ -85,14 +86,21 @@ extra_env = ["GITHUB_TOKEN"]
 
 ## Install
 
+**One-liner** (downloads from GitHub, installs to `~/.local/bin`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/xukai92/claude-pod/main/claude-pod | bash -s -- install
+```
+
+**From a local clone** (for development):
+
 ```bash
 git clone https://github.com/xukai92/claude-pod.git
 cd claude-pod
-./claude-pod build
-
-# Optional: add to PATH
-ln -s "$(pwd)/claude-pod" ~/.local/bin/claude-pod
+./claude-pod install
 ```
+
+Both paths copy `claude-pod`, `entrypoint.sh`, and `Containerfile` to `~/.local/share/claude-pod/`, install the script to `~/.local/bin/claude-pod`, and build the container image.
 
 ## License
 
