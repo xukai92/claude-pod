@@ -19,7 +19,7 @@ case "$USER_SHELL" in
         "$USER_SHELL" -l -c 'claude --dangerously-skip-permissions $argv' -- "$@"
         ;;
     *)
-        "$USER_SHELL" -l -c 'claude --dangerously-skip-permissions "$@"' -- claude "$@"
+        "$USER_SHELL" -l -c 'claude --dangerously-skip-permissions "$@"' claude "$@"
         ;;
 esac
 exit_code=$?
