@@ -106,7 +106,7 @@ suggest_podman_install() {
 
     # Non-root without sudo on a system package manager — can only suggest
     if $needs_root && [[ -n "$install_cmd" ]]; then
-        echo "Install with: sudo ${install_cmd}" >&2
+        echo "Install with (as root): ${install_cmd}" >&2
         echo "Run as root or install sudo first." >&2
         exit 1
     fi
@@ -114,7 +114,7 @@ suggest_podman_install() {
     if [[ -n "$install_cmd" ]]; then
         echo "Install with: $install_cmd" >&2
         # Offer to install if running interactively
-        if [[ -t 0 && -t 1 ]]; then
+        if [[ -t 0 && -t 2 ]]; then
             read -rp "Install now? [y/N] " answer
             if [[ "$answer" =~ ^[Yy]$ ]]; then
                 $install_cmd || die "Podman installation failed."
