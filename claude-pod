@@ -270,6 +270,7 @@ Usage: claude-pod [command] [options]
 
 Running with no command starts an interactive Claude Code session (same as 'run').
 Unrecognized flags are forwarded to Claude Code.
+claude-pod flags must come before Claude Code flags.
 
 Commands:
   build                Build the container image
