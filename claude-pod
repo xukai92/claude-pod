@@ -115,6 +115,7 @@ suggest_podman_install() {
         echo "Install with: $install_cmd" >&2
         # Offer to install if running interactively
         if [[ -t 0 && -t 2 ]]; then
+            local answer
             read -rp "Install now? [y/N] " answer
             if [[ "$answer" =~ ^[Yy]$ ]]; then
                 $install_cmd || die "Podman installation failed."

@@ -4,7 +4,7 @@ Run [Claude Code](https://docs.anthropic.com/en/docs/claude-code) in a rootless 
 
 ## Install
 
-Requires [Podman](https://podman.io/docs/installation) (rootless) and Claude Code on the host. If Podman is missing, claude-pod will detect your package manager and offer to install it.
+Requires [Podman](https://podman.io/docs/installation) (rootless) and Claude Code on the host. If Podman is missing, claude-pod will detect your package manager and suggest the install command (auto-install is offered when running interactively).
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/xukai92/claude-pod/main/claude-pod | bash -s -- install
