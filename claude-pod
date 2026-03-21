@@ -324,9 +324,9 @@ cmd_install() {
     # Determine source: local clone or download from GitHub
     if [[ -n "$SCRIPT_DIR" && -f "${SCRIPT_DIR}/Containerfile" && -f "${SCRIPT_DIR}/entrypoint.sh" ]]; then
         echo "Installing from local source (${SCRIPT_DIR})..."
-        cp "${SCRIPT_DIR}/claude-pod" "$DATA_DIR/"
         cp "${SCRIPT_DIR}/entrypoint.sh" "$DATA_DIR/"
         cp "${SCRIPT_DIR}/Containerfile" "$DATA_DIR/"
+        cp "${SCRIPT_DIR}/claude-pod" "$DATA_DIR/"
     else
         echo "Downloading claude-pod from GitHub..."
         curl -fsSL "${GITHUB_RAW}/claude-pod" -o "$DATA_DIR/claude-pod"
@@ -334,9 +334,8 @@ cmd_install() {
         curl -fsSL "${GITHUB_RAW}/Containerfile" -o "$DATA_DIR/Containerfile"
     fi
 
-    # Install the script to ~/.local/bin
-    cp "$DATA_DIR/claude-pod" "${HOME}/.local/bin/claude-pod"
-    chmod +x "${HOME}/.local/bin/claude-pod"
+    # Install the script to ~/.local/bin (install -m replaces symlinks safely)
+    install -m 755 "$DATA_DIR/claude-pod" "${HOME}/.local/bin/claude-pod"
 
     echo "Installed claude-pod to ~/.local/bin/claude-pod"
 
