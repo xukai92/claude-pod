@@ -68,7 +68,7 @@ extra_env = ["GITHUB_TOKEN"]
 
 - **Rootless containers** via `podman --userns=keep-id` — no privilege escalation.
 - **Home is mostly read-only** — each item under `$HOME` is mounted individually. `~/.claude`, `~/.config`, `~/.local`, and cwd's parent are writable; everything else is read-only. `~/.claude.json` is copied in at startup (changes don't sync back).
-- **CWD is read-write** — Claude can only modify files in the directory you launch from (plus any `-wd` paths).
+- **CWD is read-write** — the top-level `$HOME` directory containing your cwd is mounted read-write (e.g. `~/src` when launching from `~/src/project`). Additional dirs can be made writable with `-wd`.
 - **SELinux label=disable** instead of `:Z` to avoid relabeling host directories.
 - Authentication works via OAuth credentials in `~/.claude` or `ANTHROPIC_API_KEY` env var — nothing is baked into the image.
 - Use `--network=none` for tasks that don't need network access.

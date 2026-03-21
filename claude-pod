@@ -64,9 +64,11 @@ require_podman() {
 # Mount each item under $HOME with appropriate permissions.
 # CWD's top-level parent is mounted rw; .claude.json is staged at /mnt;
 # known writable dirs (.claude, .config, .local) are rw; everything else ro.
+# Accepts a space-separated list of writable dirs to also mount rw.
 mount_home_items() {
     local -n _args=$1
     local cwd="$2"
+    local extra_rw="$3"
     local cwd_top=""
     if [[ "$cwd" == "$HOME"/* ]]; then
         local rel="${cwd#"$HOME"/}"
@@ -83,7 +85,7 @@ mount_home_items() {
             .claude|.config|.local)
                 _args+=(-v "${item}:${item}") ;;
             *)
-                if [[ "$item" == "$cwd_top" ]]; then
+                if [[ "$item" == "$cwd_top" || " $extra_rw " == *" $item "* ]]; then
                     _args+=(-v "${item}:${item}")
                 else
                     _args+=(-v "${item}:${item}:ro")
@@ -186,7 +188,7 @@ cmd_run() {
         -w "${cwd}"
     )
 
-    mount_home_items args "$cwd"
+    mount_home_items args "$cwd" "${writable_dirs[*]}"
 
     # Mount cwd read-write if outside $HOME
     if cwd_needs_mount "$cwd"; then
@@ -218,8 +220,9 @@ cmd_run() {
         [[ -n "$var" ]] && args+=(-e "$var")
     done < <(cfg_get_array "defaults" "extra_env")
 
-    # Extra writable dirs (overlaid on top of the ro home mount)
+    # Extra writable dirs outside $HOME (home subdirs handled by mount_home_items)
     for dir in "${writable_dirs[@]}"; do
+        [[ "$dir" == "$HOME"/* ]] && continue
         args+=(-v "${dir}:${dir}")
     done
 
