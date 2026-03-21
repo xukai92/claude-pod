@@ -67,6 +67,10 @@ cmd_build() {
     require_podman
     local shell_name
     shell_name=$(basename "$(getent passwd "$(whoami)" | cut -d: -f7)")
+    case "$shell_name" in
+        bash|zsh|fish) ;;
+        *) echo "warning: unsupported shell '$shell_name', defaulting to bash" >&2; shell_name=bash ;;
+    esac
     echo "Building $IMAGE for $(whoami) (uid=$(id -u), gid=$(id -g), shell=${shell_name})..."
     podman build -t "$IMAGE" \
         --build-arg "USERNAME=$(whoami)" \

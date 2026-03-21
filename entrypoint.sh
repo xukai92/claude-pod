@@ -7,8 +7,21 @@
 USER_SHELL=$(getent passwd "$(id -un)" | cut -d: -f7)
 USER_SHELL="${USER_SHELL:-/bin/bash}"
 
-# Run claude through a login shell so PATH and env are set up
-"$USER_SHELL" -l -c "claude --dangerously-skip-permissions $*"
+if [ ! -x "$USER_SHELL" ]; then
+    echo "warning: $USER_SHELL not found, falling back to /bin/bash" >&2
+    USER_SHELL=/bin/bash
+fi
+
+# Run claude through a login shell so PATH and env are set up.
+# Use "$@" to preserve argument boundaries safely.
+case "$USER_SHELL" in
+    */fish)
+        "$USER_SHELL" -l -c 'claude --dangerously-skip-permissions $argv' -- "$@"
+        ;;
+    *)
+        "$USER_SHELL" -l -c 'claude --dangerously-skip-permissions "$@"' -- claude "$@"
+        ;;
+esac
 exit_code=$?
 
 # If NTFY_TOPIC is set, notify on exit

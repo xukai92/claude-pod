@@ -24,7 +24,9 @@ RUN dnf install -y \
 # Create user matching the host user (after shell packages are installed)
 # Resolve shell name to its path inside the container (host path may differ)
 RUN groupadd -g ${USER_GID} ${USERNAME} && \
-    useradd -m -u ${USER_UID} -g ${USER_GID} -s "$(which ${USER_SHELL})" ${USERNAME}
+    SHELL_PATH="$(command -v ${USER_SHELL})" && \
+    if [ -z "$SHELL_PATH" ]; then echo "error: shell '${USER_SHELL}' not found in image" >&2; exit 1; fi && \
+    useradd -m -u ${USER_UID} -g ${USER_GID} -s "$SHELL_PATH" ${USERNAME}
 
 # Entrypoint wrapper: runs Claude, then optionally notifies via ntfy
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
