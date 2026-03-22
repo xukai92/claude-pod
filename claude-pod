@@ -122,7 +122,8 @@ require_podman() {
     command -v podman >/dev/null 2>&1 || suggest_podman_install
 }
 
-# .claude.json staged at /mnt (not bind-mounted) because bun's atomic writes cause EROFS.
+# .claude.json is bind-mounted ro at /mnt, then copied into $HOME by entrypoint for writability
+# (bun's atomic writes cause EROFS on direct bind-mounts).
 # .claude, .config, .local are rw; cwd's top-level parent and extra_rw dirs are rw; rest ro.
 mount_home_items() {
     local -n _args=$1
@@ -187,7 +188,7 @@ build_base_args() {
         --security-opt label=disable  # avoid SELinux relabeling host dirs
         -w "${cwd}"
     )
-    mount_home_items _base_args "$cwd" "$extra_rw"
+    mount_home_items "$1" "$cwd" "$extra_rw"
     if cwd_needs_mount "$cwd"; then
         _base_args+=(-v "${cwd}:${cwd}")
     fi
@@ -389,10 +390,13 @@ cmd_install() {
         command -v curl >/dev/null 2>&1 || die "curl is required for remote install."
         local github_raw="https://raw.githubusercontent.com/xukai92/claude-pod/${ref}"
         echo "Downloading claude-pod from GitHub (ref: ${ref})..."
-        curl -fsSL "${github_raw}/claude-pod" -o "$DATA_DIR/claude-pod" &
-        curl -fsSL "${github_raw}/entrypoint.sh" -o "$DATA_DIR/entrypoint.sh" &
-        curl -fsSL "${github_raw}/Containerfile" -o "$DATA_DIR/Containerfile" &
-        wait || die "Download failed."
+        local pids=()
+        curl -fsSL "${github_raw}/claude-pod" -o "$DATA_DIR/claude-pod" & pids+=("$!")
+        curl -fsSL "${github_raw}/entrypoint.sh" -o "$DATA_DIR/entrypoint.sh" & pids+=("$!")
+        curl -fsSL "${github_raw}/Containerfile" -o "$DATA_DIR/Containerfile" & pids+=("$!")
+        for pid in "${pids[@]}"; do
+            wait "$pid" || die "Download failed."
+        done
     fi
 
     # cp/install follow symlinks, so remove first
