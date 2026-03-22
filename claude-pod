@@ -298,6 +298,11 @@ cmd_run() {
         args+=(--network="$network")
     fi
 
+    # Custom executable (e.g. CLAUDE_POD_CMD=rlaude)
+    if [[ -n "${CLAUDE_POD_CMD:-}" ]]; then
+        args+=(-e CLAUDE_POD_CMD)
+    fi
+
     # Extra env vars from config
     while IFS= read -r var; do
         [[ -n "$var" ]] && args+=(-e "$var")
