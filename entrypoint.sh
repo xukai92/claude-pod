@@ -29,7 +29,7 @@ CLAUDE_CMD="${CLAUDE_POD_CMD:-claude}"
 # Run through a login shell so PATH and env are set up.
 case "$USER_SHELL" in
     */fish)
-        "$USER_SHELL" -l -c "$CLAUDE_CMD --dangerously-skip-permissions \$argv" -- "$@"
+        "$USER_SHELL" -l -c '$argv[1] --dangerously-skip-permissions $argv[2..-1]' -- "$CLAUDE_CMD" "$@"
         ;;
     *)
         "$USER_SHELL" -l -c '"$0" --dangerously-skip-permissions "$@"' "$CLAUDE_CMD" "$@"
