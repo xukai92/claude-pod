@@ -391,9 +391,9 @@ cmd_install() {
         local github_raw="https://raw.githubusercontent.com/xukai92/claude-pod/${ref}"
         echo "Downloading claude-pod from GitHub (ref: ${ref})..."
         local pids=()
-        curl -fsSL "${github_raw}/claude-pod" -o "$DATA_DIR/claude-pod" & pids+=("$!")
-        curl -fsSL "${github_raw}/entrypoint.sh" -o "$DATA_DIR/entrypoint.sh" & pids+=("$!")
-        curl -fsSL "${github_raw}/Containerfile" -o "$DATA_DIR/Containerfile" & pids+=("$!")
+        curl -fsSL --show-error "${github_raw}/claude-pod" -o "$DATA_DIR/claude-pod" & pids+=("$!")
+        curl -fsSL --show-error "${github_raw}/entrypoint.sh" -o "$DATA_DIR/entrypoint.sh" & pids+=("$!")
+        curl -fsSL --show-error "${github_raw}/Containerfile" -o "$DATA_DIR/Containerfile" & pids+=("$!")
         for pid in "${pids[@]}"; do
             wait "$pid" || die "Download failed."
         done
@@ -456,7 +456,7 @@ Run flags:
 
 Config: ~/.config/claude-pod/config.toml
 EOF
-        exit 1
+        exit 0
         ;;
     *)  cmd_run "$@" ;;
 esac
