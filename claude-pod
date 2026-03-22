@@ -426,8 +426,8 @@ case "${1:-}" in
     clean) shift; cmd_clean "$@" ;;
     -V|--version) echo "claude-pod $VERSION"; exit 0 ;;
     -h|--help)
-        cat <<EOF
-claude-pod $VERSION
+        echo "claude-pod $VERSION"
+        cat <<'EOF'
 
 Usage: claude-pod [command] [options]
 
@@ -449,7 +449,7 @@ Run flags:
   --detach             Run in background (print container ID)
   --network=none       Disable all networking
   --notify <topic>     Send ntfy.sh notification when session ends
-  --notify-cmd <cmd>   Run custom command on exit (\$WORKSPACE, \$EXIT_CODE)
+  --notify-cmd <cmd>   Run custom command on exit ($WORKSPACE, $EXIT_CODE)
   --keep-groups        Preserve supplementary groups in container
   -wd, --writable-dir <path>
                        Mount a dir read-write (can be repeated)

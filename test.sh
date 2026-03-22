@@ -10,13 +10,11 @@ echo "0 0" > "$RESULTS_FILE"
 trap 'rm -f "$RESULTS_FILE"' EXIT
 
 pass() {
-    local counts
     read -r p f < "$RESULTS_FILE"
     echo "$((p + 1)) $f" > "$RESULTS_FILE"
     echo "  PASS: $1"
 }
 fail() {
-    local counts
     read -r p f < "$RESULTS_FILE"
     echo "$p $((f + 1))" > "$RESULTS_FILE"
     echo "  FAIL: $1 — $2"
@@ -51,7 +49,11 @@ assert_not_contains() {
 
 # Source helpers without running main (stop before case statement)
 source_helpers() {
-    eval "$(sed '/^case/,$d' "$CP")"
+    local tmp
+    tmp=$(mktemp)
+    sed '/^case/,$d' "$CP" > "$tmp"
+    source "$tmp"
+    rm -f "$tmp"
 }
 
 # --- Tests ---
@@ -105,14 +107,24 @@ echo "=== Helper function tests ==="
     assert_eq "cwd_needs_mount: HOME subdir does not" "false" \
         "$(cwd_needs_mount "$HOME/src" && echo true || echo false)"
 
-    # resolve_dirs from clone — compare against independently computed TEST_DIR
-    resolve_dirs
-    assert_eq "resolve_dirs: SCRIPT_DIR matches test dir" "$TEST_DIR" "$SCRIPT_DIR"
-    assert_eq "resolve_dirs: BUILD_DIR is SCRIPT_DIR when clone" "$TEST_DIR" "$BUILD_DIR"
+    # resolve_dirs — needs BASH_SOURCE[0] to point at the real script location.
+    # Create a temp wrapper that sources the helpers from the correct path.
+    tmp_wrapper=$(mktemp "$TEST_DIR/.test-resolve-XXXXXX")
+    sed '/^case/,$d' "$CP" > "$tmp_wrapper"
+    echo 'resolve_dirs; echo "$SCRIPT_DIR|$BUILD_DIR"' >> "$tmp_wrapper"
+    out=$(bash "$tmp_wrapper" 2>/dev/null || true)
+    rm -f "$tmp_wrapper"
+    assert_eq "resolve_dirs: SCRIPT_DIR matches test dir" "$TEST_DIR" "${out%%|*}"
+    assert_eq "resolve_dirs: BUILD_DIR is SCRIPT_DIR when clone" "$TEST_DIR" "${out##*|}"
 
-    # has_local_build_files
+    # has_local_build_files — set vars directly since we can't rely on BASH_SOURCE
+    SCRIPT_DIR="$TEST_DIR"
+    BUILD_DIR="$TEST_DIR"
     has_local_build_files && pass "has_local_build_files: true in clone" \
         || fail "has_local_build_files: true in clone" "returned false"
+    BUILD_DIR="$DATA_DIR"
+    has_local_build_files && fail "has_local_build_files: false when DATA_DIR" "returned true" \
+        || pass "has_local_build_files: false when DATA_DIR"
 
     # die (calls exit, so test in a nested bash with just the function)
     out=$(bash -c 'die() { echo "error: $*" >&2; exit 1; }; die "test error"' 2>&1 || true)
