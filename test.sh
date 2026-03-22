@@ -3,8 +3,8 @@
 # helper functions, and CLI behavior.
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CP="$SCRIPT_DIR/claude-pod"
+TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CP="$TEST_DIR/claude-pod"
 RESULTS_FILE=$(mktemp)
 echo "0 0" > "$RESULTS_FILE"
 trap 'rm -f "$RESULTS_FILE"' EXIT
@@ -89,7 +89,7 @@ assert_contains "-V is alias for --version" "$out" "claude-pod"
 echo ""
 echo "=== Syntax tests ==="
 bash -n "$CP" && pass "script syntax valid" || fail "script syntax valid" "bash -n failed"
-bash -n "$SCRIPT_DIR/entrypoint.sh" && pass "entrypoint.sh syntax valid" || fail "entrypoint.sh syntax valid" "bash -n failed"
+bash -n "$TEST_DIR/entrypoint.sh" && pass "entrypoint.sh syntax valid" || fail "entrypoint.sh syntax valid" "bash -n failed"
 
 # --- Helper function tests (sourced) ---
 echo ""
@@ -105,10 +105,10 @@ echo "=== Helper function tests ==="
     assert_eq "cwd_needs_mount: HOME subdir does not" "false" \
         "$(cwd_needs_mount "$HOME/src" && echo true || echo false)"
 
-    # resolve_dirs from clone
+    # resolve_dirs from clone — compare against independently computed TEST_DIR
     resolve_dirs
-    assert_eq "resolve_dirs: SCRIPT_DIR set from clone" "$SCRIPT_DIR" "$SCRIPT_DIR"
-    assert_eq "resolve_dirs: BUILD_DIR is SCRIPT_DIR when clone" "$SCRIPT_DIR" "$BUILD_DIR"
+    assert_eq "resolve_dirs: SCRIPT_DIR matches test dir" "$TEST_DIR" "$SCRIPT_DIR"
+    assert_eq "resolve_dirs: BUILD_DIR is SCRIPT_DIR when clone" "$TEST_DIR" "$BUILD_DIR"
 
     # has_local_build_files
     has_local_build_files && pass "has_local_build_files: true in clone" \
@@ -126,7 +126,7 @@ echo "=== Helper function tests ==="
 # --- Entrypoint tests ---
 echo ""
 echo "=== Entrypoint tests ==="
-ep=$(cat "$SCRIPT_DIR/entrypoint.sh")
+ep=$(cat "$TEST_DIR/entrypoint.sh")
 assert_contains "entrypoint: uses CLAUDE_POD_CMD" "$ep" "CLAUDE_POD_CMD"
 assert_contains "entrypoint: defaults to claude" "$ep" '${CLAUDE_POD_CMD:-claude}'
 assert_contains "entrypoint: fish path" "$ep" '*/fish)'
