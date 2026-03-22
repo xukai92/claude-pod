@@ -24,14 +24,15 @@ if [ -n "${CLAUDE_POD_SHELL:-}" ]; then
     exec "$USER_SHELL" -l
 fi
 
-# Run claude through a login shell so PATH and env are set up.
-# Use "$@" to preserve argument boundaries safely.
+CLAUDE_CMD="${CLAUDE_POD_CMD:-claude}"
+
+# Run through a login shell so PATH and env are set up.
 case "$USER_SHELL" in
     */fish)
-        "$USER_SHELL" -l -c 'claude --dangerously-skip-permissions $argv' -- "$@"
+        "$USER_SHELL" -l -c "$CLAUDE_CMD --dangerously-skip-permissions \$argv" -- "$@"
         ;;
     *)
-        "$USER_SHELL" -l -c 'claude --dangerously-skip-permissions "$@"' claude "$@"
+        "$USER_SHELL" -l -c '"$0" --dangerously-skip-permissions "$@"' "$CLAUDE_CMD" "$@"
         ;;
 esac
 exit_code=$?
