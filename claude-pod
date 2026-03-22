@@ -205,6 +205,7 @@ cmd_run() {
     require_image
 
     local detach=false
+    local keep_groups=false
     local network=""
     local notify_cmd=""
     local writable_dirs=()
@@ -229,6 +230,7 @@ cmd_run() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --detach)        detach=true; shift ;;
+            --keep-groups)   keep_groups=true; shift ;;
             --network=*)     network="${1#--network=}"; shift ;;
             --notify)
                 # Shorthand for ntfy.sh: --notify <topic>
@@ -264,6 +266,10 @@ cmd_run() {
         --security-opt label=disable
         -w "${cwd}"
     )
+
+    if $keep_groups; then
+        args+=(--group-add keep-groups)
+    fi
 
     mount_home_items args "$cwd" "${writable_dirs[*]}"
 
@@ -450,6 +456,7 @@ Run flags:
   --network=none       Disable all networking
   --notify <topic>     Send ntfy.sh notification when session ends
   --notify-cmd <cmd>   Run custom command on exit ($WORKSPACE, $EXIT_CODE)
+  --keep-groups        Preserve supplementary groups in container
   -wd, --writable-dir <path>
                        Mount a dir read-write (can be repeated)
 
