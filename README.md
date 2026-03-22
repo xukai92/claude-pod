@@ -50,6 +50,7 @@ claude-pod shell                    # drop into a shell in the container
 | `--network=none` | Disable networking |
 | `--notify <topic>` | [ntfy.sh](https://ntfy.sh) notification on exit |
 | `--notify-cmd <cmd>` | Custom exit command (`$WORKSPACE`, `$EXIT_CODE`) |
+| `--keep-groups` | Preserve supplementary groups (for shared dirs) |
 | `-wd, --writable-dir <path>` | Extra read-write mount (repeatable) |
 
 ## Config
