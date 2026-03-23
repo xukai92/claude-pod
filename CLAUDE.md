@@ -16,7 +16,8 @@ A Podman wrapper for running Claude Code in a rootless container sandbox.
 - **`--userns=keep-id`** maps host UID into container. The Containerfile creates a user matching the host user at build time via `--build-arg`.
 - **`--security-opt label=disable`** to avoid SELinux relabeling host directories (`:Z` caused credential corruption).
 - **Homebrew/linuxbrew** mounted read-only if `$HOMEBREW_PREFIX` is set.
-- **No Claude/bun in image** — both are picked up from the host home mount. Entrypoint uses the host user's login shell (bash, zsh, or fish) to inherit PATH config.
+- **No Claude/bun in image (Linux)** — picked up from the host via bind mounts. Entrypoint uses the host user's login shell (bash, zsh, or fish) to inherit PATH config.
+- **Claude Code installed in image (macOS)** — host binaries are Mach-O and can't run in the Linux container, so `claude-pod build` passes `INSTALL_CLAUDE=1` to install the compiled Claude Code binary via the official install script.
 - **`--writable-dir` / `-wd` flag** for extra writable mounts on top of the ro home.
 - **macOS support** — on Darwin, `--userns=keep-id` and `--security-opt label=disable` are skipped; `podman machine` is auto-started; `HOME_DIR` build arg ensures the container user's home matches the host (e.g. `/Users/you`).
 

@@ -5,6 +5,7 @@ ARG USER_UID
 ARG USER_GID
 ARG USER_SHELL=bash
 ARG HOME_DIR
+ARG INSTALL_CLAUDE=0
 
 # Runtime deps and tools (all three shells installed so any can be used)
 RUN dnf install -y \
@@ -38,5 +39,11 @@ COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 USER ${USERNAME}
+
+# Install Claude Code in-image (needed on macOS where host binaries are Mach-O)
+RUN if [ "${INSTALL_CLAUDE}" = "1" ]; then \
+        curl -fsSL https://claude.ai/install.sh | bash; \
+    fi
+
 WORKDIR /workspace
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
