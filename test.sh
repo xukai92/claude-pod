@@ -51,9 +51,9 @@ assert_not_contains() {
 source_helpers() {
     local tmp
     tmp=$(mktemp)
+    trap 'rm -f "$tmp"' RETURN
     sed '/^case/,$d' "$CP" > "$tmp"
     source "$tmp"
-    rm -f "$tmp"
 }
 
 # --- Tests ---
