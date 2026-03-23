@@ -144,6 +144,19 @@ ensure_podman_machine() {
         podman machine init 2>/dev/null || true
         podman machine start || die "Failed to start podman machine"
     fi
+    # Check if Homebrew prefix is shared with the VM
+    if [[ -n "${HOMEBREW_PREFIX:-}" && -d "$HOMEBREW_PREFIX" ]]; then
+        if ! podman machine ssh -- test -d "$HOMEBREW_PREFIX" 2>/dev/null; then
+            echo "warning: $HOMEBREW_PREFIX is not shared with the podman machine VM." >&2
+            echo "  Some host tools won't be available in the container." >&2
+            echo "  To fix, recreate the machine with:" >&2
+            echo "    podman machine stop" >&2
+            echo "    podman machine rm" >&2
+            echo "    podman machine init --volume ${HOMEBREW_PREFIX}:${HOMEBREW_PREFIX}:ro" >&2
+            echo "    podman machine start" >&2
+            echo "" >&2
+        fi
+    fi
 }
 
 # .claude.json is bind-mounted ro at /mnt, then copied into $HOME by entrypoint for writability
@@ -222,7 +235,9 @@ build_base_args() {
         _base_args+=(-v "${cwd}:${cwd}")
     fi
     if [[ -n "${HOMEBREW_PREFIX:-}" && -d "$HOMEBREW_PREFIX" ]]; then
-        _base_args+=(-v "${HOMEBREW_PREFIX}:${HOMEBREW_PREFIX}:ro")
+        if ! is_macos || podman machine ssh -- test -d "$HOMEBREW_PREFIX" 2>/dev/null; then
+            _base_args+=(-v "${HOMEBREW_PREFIX}:${HOMEBREW_PREFIX}:ro")
+        fi
     fi
 }
 
