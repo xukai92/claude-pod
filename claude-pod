@@ -396,9 +396,14 @@ cmd_install() {
         curl -fsSL --show-error "${github_raw}/claude-pod" -o "$DATA_DIR/claude-pod" & pids+=("$!")
         curl -fsSL --show-error "${github_raw}/entrypoint.sh" -o "$DATA_DIR/entrypoint.sh" & pids+=("$!")
         curl -fsSL --show-error "${github_raw}/Containerfile" -o "$DATA_DIR/Containerfile" & pids+=("$!")
+        local dl_failed=false
         for pid in "${pids[@]}"; do
-            wait "$pid" || die "Download failed."
+            wait "$pid" || dl_failed=true
         done
+        if $dl_failed; then
+            rm -f "$DATA_DIR/claude-pod" "$DATA_DIR/entrypoint.sh" "$DATA_DIR/Containerfile"
+            die "Download failed."
+        fi
     fi
 
     # cp/install follow symlinks, so remove first
