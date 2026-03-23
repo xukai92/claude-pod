@@ -165,7 +165,7 @@ mount_home_items() {
         base=$(basename "$item")
         # Skip macOS SIP-protected directories that podman can't access
         case "$base" in
-            .Trash|.Trashes|Library|.local) is_macos && continue ;;
+            .Trash|.Trashes|Library|.local|.config) is_macos && continue ;;
         esac
         case "$base" in
             .claude.json)
