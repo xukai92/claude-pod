@@ -18,6 +18,7 @@ A Podman wrapper for running Claude Code in a rootless container sandbox.
 - **Homebrew/linuxbrew** mounted read-only if `$HOMEBREW_PREFIX` is set.
 - **No Claude/bun in image** — both are picked up from the host home mount. Entrypoint uses the host user's login shell (bash, zsh, or fish) to inherit PATH config.
 - **`--writable-dir` / `-wd` flag** for extra writable mounts on top of the ro home.
+- **macOS support** — on Darwin, `--userns=keep-id` and `--security-opt label=disable` are skipped; `podman machine` is auto-started; `HOME_DIR` build arg ensures the container user's home matches the host (e.g. `/Users/you`).
 
 ## Versioning
 
