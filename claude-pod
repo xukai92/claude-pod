@@ -161,10 +161,12 @@ mount_home_items() {
 
     for item in "${HOME}"/.[!.]* "${HOME}"/..?* "${HOME}"/*; do
         [[ -e "$item" ]] || continue
-        # Skip items that can't be accessed (e.g. macOS SIP-protected .Trash)
-        if is_macos && ! stat "$item" &>/dev/null; then continue; fi
         local base
         base=$(basename "$item")
+        # Skip macOS SIP-protected directories that podman can't access
+        case "$base" in
+            .Trash|.Trashes|Library) is_macos && continue ;;
+        esac
         case "$base" in
             .claude.json)
                 _args+=(-v "${item}:/mnt/.claude.json:ro") ;;
