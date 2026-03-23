@@ -230,6 +230,7 @@ cmd_run() {
 
     local detach=false
     local keep_groups=false
+    local max_memory=""
     local network=""
     local notify_cmd=""
     local writable_dirs=()
@@ -255,6 +256,10 @@ cmd_run() {
         case "$1" in
             --detach)        detach=true; shift ;;
             --keep-groups)   keep_groups=true; shift ;;
+            --max-memory)
+                [[ $# -lt 2 ]] && die "Flag --max-memory requires a value (e.g. 4g)"
+                max_memory="$2"; shift 2 ;;
+            --max-memory=*)  max_memory="${1#--max-memory=}"; shift ;;
             --network=*)     network="${1#--network=}"; shift ;;
             --notify)
                 # Shorthand for ntfy.sh: --notify <topic>
@@ -285,6 +290,10 @@ cmd_run() {
 
     if $keep_groups; then
         args+=(--group-add keep-groups)
+    fi
+
+    if [[ -n "$max_memory" ]]; then
+        args+=(--memory="$max_memory")
     fi
 
     # OAuth creds in ~/.claude work too, so API key is optional
@@ -458,6 +467,7 @@ Run flags:
   --notify <topic>     Send ntfy.sh notification when session ends
   --notify-cmd <cmd>   Run custom command on exit ($WORKSPACE, $EXIT_CODE)
   --keep-groups        Preserve supplementary groups in container
+  --max-memory <size>  Set container memory limit (e.g. 4g, 512m)
   -wd, --writable-dir <path>
                        Mount a dir read-write (can be repeated)
 
