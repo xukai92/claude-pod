@@ -134,6 +134,20 @@ echo "=== Helper function tests ==="
     # cfg_get with no config file
     out=$(CONFIG_FILE="/nonexistent" cfg_get "section" "key")
     assert_eq "cfg_get: empty when no config" "" "$out"
+
+    # HOST_OS variable
+    assert_eq "HOST_OS matches uname" "$(uname -s)" "$HOST_OS"
+
+    # is_macos
+    if [[ "$(uname -s)" == "Darwin" ]]; then
+        is_macos && pass "is_macos: true on macOS" || fail "is_macos: true on macOS" "returned false"
+    else
+        is_macos && fail "is_macos: false on Linux" "returned true" || pass "is_macos: false on Linux"
+    fi
+
+    # portable_realpath
+    rp_out=$(portable_realpath "$CP")
+    assert_eq "portable_realpath: resolves to test dir" "$TEST_DIR" "$rp_out"
 )
 
 # --- Entrypoint tests ---
@@ -154,6 +168,7 @@ echo "=== Structure tests ==="
 # All expected functions exist
 for fn in die require_image require_podman suggest_podman_install mount_home_items \
           cwd_needs_mount resolve_dirs has_local_build_files build_base_args \
+          portable_realpath is_macos ensure_podman_machine \
           cmd_build cmd_run cmd_shell cmd_exec cmd_ps cmd_clean cmd_install \
           cfg_get cfg_get_array; do
     grep -q "^${fn}()" "$CP" && pass "function $fn defined" || fail "function $fn defined" "not found"
@@ -165,7 +180,7 @@ for cmd in install build run shell exec ps clean; do
 done
 
 # Key variables
-for var in VERSION IMAGE CONFIG_FILE CONTAINER_NAME_PREFIX DATA_DIR; do
+for var in VERSION IMAGE CONFIG_FILE CONTAINER_NAME_PREFIX DATA_DIR HOST_OS; do
     grep -q "^${var}=" "$CP" && pass "variable $var defined" || fail "variable $var defined" "not found"
 done
 

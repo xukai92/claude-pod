@@ -4,6 +4,7 @@ ARG USERNAME
 ARG USER_UID
 ARG USER_GID
 ARG USER_SHELL=bash
+ARG HOME_DIR
 
 # Runtime deps and tools (all three shells installed so any can be used)
 RUN dnf install -y \
@@ -27,7 +28,10 @@ RUN case "${USER_SHELL}" in bash|zsh|fish) ;; *) echo "error: invalid USER_SHELL
     groupadd -g "${USER_GID}" "${USERNAME}" && \
     SHELL_PATH="$(command -v "${USER_SHELL}")" && \
     if [ -z "$SHELL_PATH" ]; then echo "error: shell '${USER_SHELL}' not found in image" >&2; exit 1; fi && \
-    useradd -m -u "${USER_UID}" -g "${USER_GID}" -s "$SHELL_PATH" "${USERNAME}"
+    mkdir -p "$(dirname "${HOME_DIR}")" && \
+    useradd -m -u "${USER_UID}" -g "${USER_GID}" -d "${HOME_DIR}" -s "$SHELL_PATH" "${USERNAME}"
+
+ENV HOME=${HOME_DIR}
 
 # Entrypoint wrapper: runs Claude, then optionally notifies via ntfy
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh

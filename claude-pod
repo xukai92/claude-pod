@@ -9,11 +9,14 @@ fi
 
 set -euo pipefail
 
-VERSION="0.4.0"
+VERSION="0.5.0"
 IMAGE="claude-pod:latest"
 CONFIG_FILE="${HOME}/.config/claude-pod/config.toml"
 CONTAINER_NAME_PREFIX="claude-pod"
 DATA_DIR="${HOME}/.local/share/claude-pod"
+HOST_OS="$(uname -s)"
+
+is_macos() { [[ "$HOST_OS" == "Darwin" ]]; }
 
 # --- Config file parsing (simple TOML subset) ---
 
@@ -57,6 +60,18 @@ cfg_get_array() {
 # --- Helpers ---
 
 die() { echo "error: $*" >&2; exit 1; }
+
+portable_realpath() {
+    local target="$1"
+    cd "$(dirname "$target")"
+    target=$(basename "$target")
+    while [[ -L "$target" ]]; do
+        target=$(readlink "$target")
+        cd "$(dirname "$target")"
+        target=$(basename "$target")
+    done
+    echo "$(pwd -P)"
+}
 
 require_image() {
     if ! podman image exists "$IMAGE" 2>/dev/null; then
@@ -122,6 +137,15 @@ require_podman() {
     command -v podman >/dev/null 2>&1 || suggest_podman_install
 }
 
+ensure_podman_machine() {
+    is_macos || return 0
+    if ! podman info &>/dev/null; then
+        echo "Starting podman machine..."
+        podman machine init 2>/dev/null || true
+        podman machine start || die "Failed to start podman machine"
+    fi
+}
+
 # .claude.json is bind-mounted ro at /mnt, then copied into $HOME by entrypoint for writability
 # (bun's atomic writes cause EROFS on direct bind-mounts).
 # .claude, .config, .local are rw; cwd's top-level parent and extra_rw dirs are rw; rest ro.
@@ -162,7 +186,7 @@ cwd_needs_mount() {
 resolve_dirs() {
     # When piped from curl (bash -s), BASH_SOURCE[0] is empty
     if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]]; then
-        SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+        SCRIPT_DIR="$(portable_realpath "${BASH_SOURCE[0]}")"
     else
         SCRIPT_DIR=""
     fi
@@ -182,14 +206,15 @@ build_base_args() {
     local -n _base_args=$1
     local cwd="$2"
     local extra_rw="${3:-}"
-    _base_args+=(
-        --rm
-        --userns=keep-id
-        --security-opt label=disable  # avoid SELinux relabeling host dirs
-        -w "${cwd}"
-    )
+    _base_args+=(--rm -w "${cwd}")
+    if ! is_macos; then
+        _base_args+=(--userns=keep-id --security-opt label=disable)
+    fi
     mount_home_items "$1" "$cwd" "$extra_rw"
     if cwd_needs_mount "$cwd"; then
+        if is_macos; then
+            echo "warning: CWD '${cwd}' is outside \$HOME — it may not be shared with the podman machine VM." >&2
+        fi
         _base_args+=(-v "${cwd}:${cwd}")
     fi
     if [[ -n "${HOMEBREW_PREFIX:-}" && -d "$HOMEBREW_PREFIX" ]]; then
@@ -201,6 +226,7 @@ build_base_args() {
 
 cmd_build() {
     require_podman
+    ensure_podman_machine
     [[ -z "${BUILD_DIR:-}" ]] && resolve_dirs
     if [[ ! -f "${BUILD_DIR}/Containerfile" || ! -f "${BUILD_DIR}/entrypoint.sh" ]]; then
         die "Build files (Containerfile, entrypoint.sh) not found in ${BUILD_DIR}. Run 'claude-pod install' first."
@@ -221,11 +247,13 @@ cmd_build() {
         --build-arg "USER_UID=$(id -u)" \
         --build-arg "USER_GID=$(id -g)" \
         --build-arg "USER_SHELL=${shell_name}" \
+        --build-arg "HOME_DIR=$HOME" \
         "$BUILD_DIR"
 }
 
 cmd_run() {
     require_podman
+    ensure_podman_machine
     require_image
 
     local detach=false
@@ -345,6 +373,7 @@ cmd_run() {
 
 cmd_shell() {
     require_podman
+    ensure_podman_machine
     require_image
 
     local cwd
