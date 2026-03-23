@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # claude-pod — run Claude Code in a rootless Podman container
 
 # Bail out early if not running under bash (POSIX-compatible check so sh shows a clear error)
