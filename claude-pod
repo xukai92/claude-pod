@@ -261,13 +261,17 @@ cmd_build() {
         *) echo "warning: unsupported shell '$shell_name', defaulting to bash" >&2; shell_name=bash ;;
     esac
     echo "Building $IMAGE for $(whoami) (uid=$(id -u), gid=$(id -g), shell=${shell_name})..."
-    podman build -t "$IMAGE" \
-        --build-arg "USERNAME=$(whoami)" \
-        --build-arg "USER_UID=$(id -u)" \
-        --build-arg "USER_GID=$(id -g)" \
-        --build-arg "USER_SHELL=${shell_name}" \
-        --build-arg "HOME_DIR=$HOME" \
-        "$BUILD_DIR"
+    local build_args=(
+        --build-arg "USERNAME=$(whoami)"
+        --build-arg "USER_UID=$(id -u)"
+        --build-arg "USER_GID=$(id -g)"
+        --build-arg "USER_SHELL=${shell_name}"
+        --build-arg "HOME_DIR=$HOME"
+    )
+    if is_macos; then
+        build_args+=(--build-arg "INSTALL_CLAUDE=1")
+    fi
+    podman build -t "$IMAGE" "${build_args[@]}" "$BUILD_DIR"
 }
 
 cmd_run() {
