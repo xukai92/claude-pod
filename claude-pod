@@ -161,6 +161,8 @@ mount_home_items() {
 
     for item in "${HOME}"/.[!.]* "${HOME}"/..?* "${HOME}"/*; do
         [[ -e "$item" ]] || continue
+        # Skip items that can't be accessed (e.g. macOS SIP-protected .Trash)
+        if is_macos && ! stat "$item" &>/dev/null; then continue; fi
         local base
         base=$(basename "$item")
         case "$base" in
