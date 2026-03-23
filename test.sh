@@ -122,9 +122,9 @@ echo "=== Helper function tests ==="
     BUILD_DIR="$TEST_DIR"
     has_local_build_files && pass "has_local_build_files: true in clone" \
         || fail "has_local_build_files: true in clone" "returned false"
-    BUILD_DIR="$DATA_DIR"
-    has_local_build_files && fail "has_local_build_files: false when DATA_DIR" "returned true" \
-        || pass "has_local_build_files: false when DATA_DIR"
+    SCRIPT_DIR="/nonexistent"
+    has_local_build_files && fail "has_local_build_files: false when no files" "returned true" \
+        || pass "has_local_build_files: false when no files"
 
     # die (calls exit, so test in a nested bash with just the function)
     out=$(bash -c 'die() { echo "error: $*" >&2; exit 1; }; die "test error"' 2>&1 || true)

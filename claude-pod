@@ -174,7 +174,7 @@ resolve_dirs() {
 }
 
 has_local_build_files() {
-    [[ -n "$SCRIPT_DIR" && "$BUILD_DIR" == "$SCRIPT_DIR" ]]
+    [[ -n "$SCRIPT_DIR" && -f "${SCRIPT_DIR}/Containerfile" && -f "${SCRIPT_DIR}/entrypoint.sh" ]]
 }
 
 # Common podman container args shared by cmd_run and cmd_shell
