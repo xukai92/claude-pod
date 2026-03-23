@@ -91,7 +91,7 @@ assert_contains "-V is alias for --version" "$out" "claude-pod"
 echo ""
 echo "=== Syntax tests ==="
 bash -n "$CP" && pass "script syntax valid" || fail "script syntax valid" "bash -n failed"
-bash -n "$TEST_DIR/entrypoint.sh" && pass "entrypoint.sh syntax valid" || fail "entrypoint.sh syntax valid" "bash -n failed"
+sh -n "$TEST_DIR/entrypoint.sh" && pass "entrypoint.sh syntax valid" || fail "entrypoint.sh syntax valid" "sh -n failed"
 
 # --- Helper function tests (sourced) ---
 echo ""

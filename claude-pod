@@ -385,7 +385,9 @@ cmd_install() {
 
     if has_local_build_files; then
         echo "Installing from local source (${SCRIPT_DIR})..."
-        cp "${SCRIPT_DIR}/entrypoint.sh" "${SCRIPT_DIR}/Containerfile" "${SCRIPT_DIR}/claude-pod" "$DATA_DIR/"
+        if [[ "$SCRIPT_DIR" != "$DATA_DIR" ]]; then
+            cp "${SCRIPT_DIR}/entrypoint.sh" "${SCRIPT_DIR}/Containerfile" "${SCRIPT_DIR}/claude-pod" "$DATA_DIR/"
+        fi
     else
         command -v curl >/dev/null 2>&1 || die "curl is required for remote install."
         local github_raw="https://raw.githubusercontent.com/xukai92/claude-pod/${ref}"
