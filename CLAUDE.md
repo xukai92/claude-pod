@@ -6,7 +6,8 @@ A Podman wrapper for running Claude Code in a rootless container sandbox.
 
 - `Containerfile` — Minimal Fedora image with build tools. No Claude/bun installed — they come from the host via bind mounts.
 - `entrypoint.sh` — POSIX sh entrypoint that runs `claude --dangerously-skip-permissions` via the user's login shell, optionally notifies via ntfy.sh on exit.
-- `claude-pod` — Bash wrapper script. Subcommands: `build`, `run` (default), `shell`, `exec`, `ps`, `clean`.
+- `claude-pod` — Bash wrapper script. Subcommands: `install`, `build`, `run` (default), `shell`, `exec`, `ps`, `clean`.
+- `test.sh` — Test suite (run with `./test.sh`, no podman required).
 
 ## Key design decisions
 
@@ -17,6 +18,10 @@ A Podman wrapper for running Claude Code in a rootless container sandbox.
 - **Homebrew/linuxbrew** mounted read-only if `$HOMEBREW_PREFIX` is set.
 - **No Claude/bun in image** — both are picked up from the host home mount. Entrypoint uses the host user's login shell (bash, zsh, or fish) to inherit PATH config.
 - **`--writable-dir` / `-wd` flag** for extra writable mounts on top of the ro home.
+
+## Versioning
+
+`VERSION` is defined at the top of `claude-pod` and shown via `--version` / `--help`. **Bump the version in every PR that changes user-facing behavior** (new flags, changed defaults, install flow changes). Patch for fixes, minor for new features.
 
 ## Remaining work
 
