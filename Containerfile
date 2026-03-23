@@ -38,12 +38,17 @@ ENV HOME=${HOME_DIR}
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
-USER ${USERNAME}
-
-# Install Claude Code in-image (needed on macOS where host binaries are Mach-O)
+# Install Claude Code to /usr/local/bin (needed on macOS where host binaries are Mach-O).
+# Installed as root to a system path so the host's ~/.claude bind mount doesn't shadow it.
 RUN if [ "${INSTALL_CLAUDE}" = "1" ]; then \
-        curl -fsSL https://claude.ai/install.sh | bash; \
+        GCS_BUCKET="https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases" && \
+        ARCH="$(uname -m)" && case "$ARCH" in x86_64|amd64) ARCH="x64" ;; arm64|aarch64) ARCH="arm64" ;; esac && \
+        PLATFORM="linux-${ARCH}" && \
+        VERSION="$(curl -fsSL "$GCS_BUCKET/latest")" && \
+        curl -fsSL -o /usr/local/bin/claude "$GCS_BUCKET/$VERSION/$PLATFORM/claude" && \
+        chmod +x /usr/local/bin/claude; \
     fi
 
+USER ${USERNAME}
 WORKDIR /workspace
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
