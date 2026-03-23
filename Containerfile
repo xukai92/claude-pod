@@ -4,7 +4,7 @@ ARG USERNAME
 ARG USER_UID
 ARG USER_GID
 ARG USER_SHELL=bash
-ARG HOME_DIR
+ARG HOME_DIR=/home/${USERNAME}
 ARG INSTALL_CLAUDE=0
 
 # Runtime deps and tools (all three shells installed so any can be used)
