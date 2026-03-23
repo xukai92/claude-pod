@@ -62,15 +62,17 @@ cfg_get_array() {
 die() { echo "error: $*" >&2; exit 1; }
 
 portable_realpath() {
-    local target="$1"
-    cd "$(dirname "$target")"
-    target=$(basename "$target")
-    while [[ -L "$target" ]]; do
-        target=$(readlink "$target")
-        cd "$(dirname "$target")"
+    (
+        local target="$1"
+        cd "$(dirname "$target")" || exit 1
         target=$(basename "$target")
-    done
-    echo "$(pwd -P)"
+        while [[ -L "$target" ]]; do
+            target=$(readlink "$target")
+            cd "$(dirname "$target")" || exit 1
+            target=$(basename "$target")
+        done
+        printf '%s\n' "$(pwd -P)/$target"
+    )
 }
 
 require_image() {
@@ -190,7 +192,7 @@ cwd_needs_mount() {
 resolve_dirs() {
     # When piped from curl (bash -s), BASH_SOURCE[0] is empty
     if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]]; then
-        SCRIPT_DIR="$(portable_realpath "${BASH_SOURCE[0]}")"
+        SCRIPT_DIR="$(dirname "$(portable_realpath "${BASH_SOURCE[0]}")")"
     else
         SCRIPT_DIR=""
     fi
@@ -395,6 +397,7 @@ cmd_shell() {
 
 cmd_exec() {
     require_podman
+    ensure_podman_machine
     [[ $# -eq 0 ]] && die "Usage: claude-pod exec <command...>"
 
     # Find the most recently started claude-pod container
@@ -407,12 +410,14 @@ cmd_exec() {
 
 cmd_ps() {
     require_podman
+    ensure_podman_machine
     podman ps --filter "name=${CONTAINER_NAME_PREFIX}" --format \
         'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
 }
 
 cmd_clean() {
     require_podman
+    ensure_podman_machine
     echo "Removing claude-pod image..."
     podman rmi -f "$IMAGE" 2>/dev/null || true
     echo "Done."

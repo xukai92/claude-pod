@@ -146,8 +146,10 @@ echo "=== Helper function tests ==="
     fi
 
     # portable_realpath
+    cwd_before=$(pwd)
     rp_out=$(portable_realpath "$CP")
-    assert_eq "portable_realpath: resolves to test dir" "$TEST_DIR" "$rp_out"
+    assert_eq "portable_realpath: resolves to script path" "$CP" "$rp_out"
+    assert_eq "portable_realpath: preserves PWD" "$cwd_before" "$(pwd)"
 )
 
 # --- Entrypoint tests ---
