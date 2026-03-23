@@ -9,23 +9,11 @@ fi
 
 set -euo pipefail
 
+VERSION="0.3.0"
 IMAGE="claude-pod:latest"
 CONFIG_FILE="${HOME}/.config/claude-pod/config.toml"
 CONTAINER_NAME_PREFIX="claude-pod"
 DATA_DIR="${HOME}/.local/share/claude-pod"
-# Resolve the real path of this script (follows symlinks) so build works from any directory
-# When piped from curl (bash -s), BASH_SOURCE[0] is empty — fall back gracefully
-if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]]; then
-    SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
-else
-    SCRIPT_DIR=""
-fi
-# For build context, prefer SCRIPT_DIR if it has both build files, else fall back to DATA_DIR
-if [[ -n "$SCRIPT_DIR" && -f "${SCRIPT_DIR}/Containerfile" && -f "${SCRIPT_DIR}/entrypoint.sh" ]]; then
-    BUILD_DIR="$SCRIPT_DIR"
-else
-    BUILD_DIR="$DATA_DIR"
-fi
 
 # --- Config file parsing (simple TOML subset) ---
 
@@ -97,7 +85,6 @@ suggest_podman_install() {
         install_cmd="${sudo_prefix}apt-get install -y podman"
     elif command -v brew >/dev/null 2>&1; then
         install_cmd="brew install podman"
-        needs_root=false  # brew doesn't need root
     elif command -v pacman >/dev/null 2>&1; then
         install_cmd="${sudo_prefix}pacman -S podman"
     elif command -v zypper >/dev/null 2>&1; then
@@ -135,10 +122,9 @@ require_podman() {
     command -v podman >/dev/null 2>&1 || suggest_podman_install
 }
 
-# Mount each item under $HOME with appropriate permissions.
-# CWD's top-level parent is mounted rw; .claude.json is staged at /mnt;
-# known writable dirs (.claude, .config, .local) are rw; everything else ro.
-# Accepts a space-separated list of writable dirs to also mount rw.
+# .claude.json is bind-mounted ro at /mnt, then copied into $HOME by entrypoint for writability
+# (bun's atomic writes cause EROFS on direct bind-mounts).
+# .claude, .config, .local are rw; cwd's top-level parent and extra_rw dirs are rw; rest ro.
 mount_home_items() {
     local -n _args=$1
     local cwd="$2"
@@ -168,16 +154,54 @@ mount_home_items() {
     done
 }
 
-# Only paths outside $HOME need their own mount.
 cwd_needs_mount() {
-    local cwd="$1"
-    [[ "$cwd" != "$HOME" && "$cwd" != "$HOME"/* ]]
+    [[ "$1" != "$HOME" && "$1" != "$HOME"/* ]]
+}
+
+# Resolve SCRIPT_DIR and BUILD_DIR lazily (only needed by build/install)
+resolve_dirs() {
+    # When piped from curl (bash -s), BASH_SOURCE[0] is empty
+    if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]]; then
+        SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+    else
+        SCRIPT_DIR=""
+    fi
+    if [[ -n "$SCRIPT_DIR" && -f "${SCRIPT_DIR}/Containerfile" && -f "${SCRIPT_DIR}/entrypoint.sh" ]]; then
+        BUILD_DIR="$SCRIPT_DIR"
+    else
+        BUILD_DIR="$DATA_DIR"
+    fi
+}
+
+has_local_build_files() {
+    [[ -n "$SCRIPT_DIR" && -f "${SCRIPT_DIR}/Containerfile" && -f "${SCRIPT_DIR}/entrypoint.sh" ]]
+}
+
+# Common podman container args shared by cmd_run and cmd_shell
+build_base_args() {
+    local -n _base_args=$1
+    local cwd="$2"
+    local extra_rw="${3:-}"
+    _base_args+=(
+        --rm
+        --userns=keep-id
+        --security-opt label=disable  # avoid SELinux relabeling host dirs
+        -w "${cwd}"
+    )
+    mount_home_items "$1" "$cwd" "$extra_rw"
+    if cwd_needs_mount "$cwd"; then
+        _base_args+=(-v "${cwd}:${cwd}")
+    fi
+    if [[ -n "${HOMEBREW_PREFIX:-}" && -d "$HOMEBREW_PREFIX" ]]; then
+        _base_args+=(-v "${HOMEBREW_PREFIX}:${HOMEBREW_PREFIX}:ro")
+    fi
 }
 
 # --- Subcommands ---
 
 cmd_build() {
     require_podman
+    [[ -z "${BUILD_DIR:-}" ]] && resolve_dirs
     if [[ ! -f "${BUILD_DIR}/Containerfile" || ! -f "${BUILD_DIR}/entrypoint.sh" ]]; then
         die "Build files (Containerfile, entrypoint.sh) not found in ${BUILD_DIR}. Run 'claude-pod install' first."
     fi
@@ -256,44 +280,22 @@ cmd_run() {
     local cwd
     cwd="$(pwd)"
 
-    # Core podman args
-    local args=(
-        --rm
-        --name "${CONTAINER_NAME_PREFIX}-$(date +%s)"
-        # Map host UID/GID into container so file ownership is correct
-        --userns=keep-id
-        # Disable SELinux relabeling — :Z would privately relabel host dirs
-        --security-opt label=disable
-        -w "${cwd}"
-    )
+    local args=(--name "${CONTAINER_NAME_PREFIX}-$(date +%s)")
+    build_base_args args "$cwd" "${writable_dirs[*]}"
 
     if $keep_groups; then
         args+=(--group-add keep-groups)
     fi
 
-    mount_home_items args "$cwd" "${writable_dirs[*]}"
-
-    # Mount cwd read-write if outside $HOME
-    if cwd_needs_mount "$cwd"; then
-        args+=(-v "${cwd}:${cwd}")
-    fi
-
-    # Mount Homebrew (linuxbrew) if present
-    if [[ -n "${HOMEBREW_PREFIX:-}" && -d "$HOMEBREW_PREFIX" ]]; then
-        args+=(-v "${HOMEBREW_PREFIX}:${HOMEBREW_PREFIX}:ro")
-    fi
-
-    # Pass through API key if set (not required — OAuth creds in ~/.claude work too)
+    # OAuth creds in ~/.claude work too, so API key is optional
     if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
         args+=(-e ANTHROPIC_API_KEY)
     fi
 
-    # Notification command (passed as env var, entrypoint.sh picks it up)
     if [[ -n "$notify_cmd" ]]; then
         args+=(-e "NOTIFY_CMD=${notify_cmd}")
     fi
 
-    # Network mode
     if [[ -n "$network" ]]; then
         args+=(--network="$network")
     fi
@@ -336,23 +338,8 @@ cmd_shell() {
     local cwd
     cwd="$(pwd)"
 
-    local shell_args=(
-        -it --rm
-        --userns=keep-id
-        --security-opt label=disable
-        -w "${cwd}"
-    )
-
-    mount_home_items shell_args "$cwd"
-
-    # Mount cwd read-write if outside $HOME
-    if cwd_needs_mount "$cwd"; then
-        shell_args+=(-v "${cwd}:${cwd}")
-    fi
-
-    if [[ -n "${HOMEBREW_PREFIX:-}" && -d "$HOMEBREW_PREFIX" ]]; then
-        shell_args+=(-v "${HOMEBREW_PREFIX}:${HOMEBREW_PREFIX}:ro")
-    fi
+    local shell_args=(-it)
+    build_base_args shell_args "$cwd"
 
     podman run "${shell_args[@]}" -e CLAUDE_POD_SHELL=1 "$IMAGE"
 }
@@ -384,6 +371,7 @@ cmd_clean() {
 
 cmd_install() {
     require_podman
+    resolve_dirs
 
     local ref="main"
     while [[ $# -gt 0 ]]; do
@@ -392,37 +380,42 @@ cmd_install() {
             *) die "Unknown install flag: $1" ;;
         esac
     done
-    local github_raw="https://raw.githubusercontent.com/xukai92/claude-pod/${ref}"
 
-    mkdir -p "$DATA_DIR"
-    mkdir -p "${HOME}/.local/bin"
+    mkdir -p "$DATA_DIR" "${HOME}/.local/bin"
 
-    # Determine source: local clone or download from GitHub
-    if [[ -n "$SCRIPT_DIR" && -f "${SCRIPT_DIR}/Containerfile" && -f "${SCRIPT_DIR}/entrypoint.sh" ]]; then
+    if has_local_build_files; then
         echo "Installing from local source (${SCRIPT_DIR})..."
-        cp "${SCRIPT_DIR}/entrypoint.sh" "$DATA_DIR/"
-        cp "${SCRIPT_DIR}/Containerfile" "$DATA_DIR/"
-        cp "${SCRIPT_DIR}/claude-pod" "$DATA_DIR/"
+        if [[ "$SCRIPT_DIR" != "$DATA_DIR" ]]; then
+            cp "${SCRIPT_DIR}/entrypoint.sh" "${SCRIPT_DIR}/Containerfile" "${SCRIPT_DIR}/claude-pod" "$DATA_DIR/"
+        fi
     else
         command -v curl >/dev/null 2>&1 || die "curl is required for remote install."
+        local github_raw="https://raw.githubusercontent.com/xukai92/claude-pod/${ref}"
         echo "Downloading claude-pod from GitHub (ref: ${ref})..."
-        curl -fsSL "${github_raw}/claude-pod" -o "$DATA_DIR/claude-pod"
-        curl -fsSL "${github_raw}/entrypoint.sh" -o "$DATA_DIR/entrypoint.sh"
-        curl -fsSL "${github_raw}/Containerfile" -o "$DATA_DIR/Containerfile"
+        local pids=()
+        curl -fsSL --show-error "${github_raw}/claude-pod" -o "$DATA_DIR/claude-pod" & pids+=("$!")
+        curl -fsSL --show-error "${github_raw}/entrypoint.sh" -o "$DATA_DIR/entrypoint.sh" & pids+=("$!")
+        curl -fsSL --show-error "${github_raw}/Containerfile" -o "$DATA_DIR/Containerfile" & pids+=("$!")
+        local dl_failed=false
+        for pid in "${pids[@]}"; do
+            wait "$pid" || dl_failed=true
+        done
+        if $dl_failed; then
+            rm -f "$DATA_DIR/claude-pod" "$DATA_DIR/entrypoint.sh" "$DATA_DIR/Containerfile"
+            die "Download failed."
+        fi
     fi
 
-    # Remove any existing symlink before copying (cp/install follow symlinks)
+    # cp/install follow symlinks, so remove first
     rm -f "${HOME}/.local/bin/claude-pod"
     install -m 755 "$DATA_DIR/claude-pod" "${HOME}/.local/bin/claude-pod"
 
     echo "Installed claude-pod to ~/.local/bin/claude-pod"
 
-    # Check if ~/.local/bin is in PATH
     if ! echo "${PATH:-}" | tr ':' '\n' | grep -qx "${HOME}/.local/bin"; then
         echo "warning: ~/.local/bin is not in your PATH. Add it to your shell profile." >&2
     fi
 
-    # Build the container image using the staged files (not the clone)
     BUILD_DIR="$DATA_DIR"
     echo ""
     cmd_build
@@ -438,8 +431,11 @@ case "${1:-}" in
     exec)  shift; cmd_exec "$@" ;;
     ps)    shift; cmd_ps "$@" ;;
     clean) shift; cmd_clean "$@" ;;
+    -V|--version) echo "claude-pod $VERSION"; exit 0 ;;
     -h|--help)
+        echo "claude-pod $VERSION"
         cat <<'EOF'
+
 Usage: claude-pod [command] [options]
 
 Running with no command starts an interactive Claude Code session (same as 'run').
@@ -467,7 +463,7 @@ Run flags:
 
 Config: ~/.config/claude-pod/config.toml
 EOF
-        exit 1
+        exit 0
         ;;
     *)  cmd_run "$@" ;;
 esac
