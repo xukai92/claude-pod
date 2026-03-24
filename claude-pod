@@ -46,8 +46,10 @@ cfg_get_array() {
             /^\[/ { in_section=0 }
             in_section && $1 == key {
                 # Extract the array contents between [ ]
-                match($0, /\[(.+)\]/, arr)
-                n = split(arr[1], items, ",")
+                s = $0
+                sub(/^[^[]*\[/, "", s)
+                sub(/\][^]]*$/, "", s)
+                n = split(s, items, ",")
                 for (i=1; i<=n; i++) {
                     gsub(/^[ \t"]+|[ \t"]+$/, "", items[i])
                     if (items[i] != "") print items[i]
