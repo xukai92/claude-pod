@@ -4,7 +4,7 @@ A Podman wrapper for running Claude Code in a rootless container sandbox.
 
 ## Architecture
 
-- `Containerfile` — Minimal Fedora image with build tools. No Claude/bun installed — they come from the host via bind mounts.
+- `Containerfile` — Minimal Fedora image with build tools. On Linux, Claude Code comes from the host via bind mounts. On macOS, it is installed in the image at build time (`INSTALL_CLAUDE=1`).
 - `entrypoint.sh` — POSIX sh entrypoint that runs `claude --dangerously-skip-permissions` via the user's login shell, optionally notifies via ntfy.sh on exit.
 - `claude-pod` — Bash wrapper script. Subcommands: `install`, `build`, `run` (default), `shell`, `exec`, `ps`, `clean`.
 - `test.sh` — Test suite (run with `./test.sh`, no podman required).
