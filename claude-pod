@@ -9,7 +9,7 @@ fi
 
 set -euo pipefail
 
-VERSION="0.4.0"
+VERSION="0.5.0"
 IMAGE="claude-pod:latest"
 CONFIG_FILE="${HOME}/.config/claude-pod/config.toml"
 CONTAINER_NAME_PREFIX="claude-pod"
@@ -233,6 +233,7 @@ cmd_run() {
     local max_memory=""
     local network=""
     local notify_cmd=""
+    local ports=()
     local writable_dirs=()
     local claude_args=()
 
@@ -276,6 +277,9 @@ cmd_run() {
             --notify-cmd)
                 [[ $# -lt 2 ]] && die "Flag --notify-cmd requires a command"
                 notify_cmd="$2"; shift 2 ;;
+            -p|--port)
+                [[ $# -lt 2 ]] && die "Flag --port requires a value (e.g. 3000:3000)"
+                ports+=("$2"); shift 2 ;;
             -wd|--writable-dir)
                 [[ $# -lt 2 ]] && die "Flag --writable-dir requires a directory"
                 writable_dirs+=("$2"); shift 2 ;;
@@ -311,6 +315,11 @@ cmd_run() {
     if [[ -n "$network" ]]; then
         args+=(--network="$network")
     fi
+
+    # Port mappings
+    for port in "${ports[@]}"; do
+        args+=(-p "$port")
+    done
 
     # Custom executable (e.g. CLAUDE_POD_CMD=rlaude)
     if [[ -n "${CLAUDE_POD_CMD:-}" ]]; then
@@ -471,6 +480,7 @@ Run flags:
   --notify-cmd <cmd>   Run custom command on exit ($WORKSPACE, $EXIT_CODE)
   --keep-groups        Preserve supplementary groups in container
   --max-memory <size>  Set container memory limit (e.g. 4g, 512m)
+  -p, --port <port>    Expose a port (e.g. 3000:3000, repeatable)
   -wd, --writable-dir <path>
                        Mount a dir read-write (can be repeated)
 
