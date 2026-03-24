@@ -280,6 +280,10 @@ cmd_run() {
             -p|--port)
                 [[ $# -lt 2 ]] && die "Flag --port requires a value (e.g. 3000:3000)"
                 ports+=("$2"); shift 2 ;;
+            --port=*)
+                local port_mapping="${1#--port=}"
+                [[ -z "$port_mapping" ]] && die "Flag --port requires a value (e.g. 3000:3000)"
+                ports+=("$port_mapping"); shift ;;
             -wd|--writable-dir)
                 [[ $# -lt 2 ]] && die "Flag --writable-dir requires a directory"
                 writable_dirs+=("$2"); shift 2 ;;
