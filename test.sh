@@ -148,7 +148,9 @@ echo "=== Helper function tests ==="
     # portable_realpath
     cwd_before=$(pwd)
     rp_out=$(portable_realpath "$CP")
-    assert_eq "portable_realpath: resolves to script path" "$CP" "$rp_out"
+    cp_dir_phys=$(cd "$(dirname "$CP")" && pwd -P)
+    cp_phys="${cp_dir_phys}/$(basename "$CP")"
+    assert_eq "portable_realpath: resolves to physical path" "$cp_phys" "$rp_out"
     assert_eq "portable_realpath: preserves PWD" "$cwd_before" "$(pwd)"
 )
 
