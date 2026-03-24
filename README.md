@@ -80,7 +80,7 @@ claude-pod works on macOS via Podman's Linux VM (`podman machine`). The containe
 
 - **Install Podman**: `brew install podman`
 - **Podman machine**: Auto-initialized and started if not already running
-- **Paths**: Directories under `$HOME` work out of the box (shared with the VM by default). Paths outside `$HOME` may not be available inside the VM
+- **Paths**: Most directories under `$HOME` are mounted automatically. `~/Library`, `~/.config`, `~/.local`, and `~/.Trash` are skipped (macOS-specific or contain Mach-O binaries). Paths outside `$HOME` may not be available inside the VM
 - **No `--userns=keep-id`**: Not supported with `podman machine`; skipped automatically on macOS
 - **Home dir**: The container user's home is set to match the host (e.g. `/Users/kai`) so bind-mount paths align
 
