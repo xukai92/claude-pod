@@ -167,7 +167,7 @@ mount_home_items() {
         [[ -e "$item" ]] || continue
         local base
         base=$(basename "$item")
-        # Skip macOS SIP-protected directories that podman can't access
+        # Skip macOS-specific dirs not useful in Linux container (Mach-O binaries, app data)
         case "$base" in
             .Trash|.Trashes|Library|.local) is_macos && continue ;;
         esac

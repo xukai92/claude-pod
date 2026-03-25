@@ -42,7 +42,7 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 # Installed as root to a system path so the host's ~/.claude bind mount doesn't shadow it.
 RUN if [ "${INSTALL_CLAUDE}" = "1" ]; then \
         GCS_BUCKET="https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases" && \
-        ARCH="$(uname -m)" && case "$ARCH" in x86_64|amd64) ARCH="x64" ;; arm64|aarch64) ARCH="arm64" ;; esac && \
+        ARCH="$(uname -m)" && case "$ARCH" in x86_64|amd64) ARCH="x64" ;; arm64|aarch64) ARCH="arm64" ;; *) echo "error: unsupported architecture '${ARCH}'" >&2; exit 1 ;; esac && \
         PLATFORM="linux-${ARCH}" && \
         VERSION="$(curl -fsSL "$GCS_BUCKET/latest")" && \
         curl -fsSL -o /usr/local/bin/claude "$GCS_BUCKET/$VERSION/$PLATFORM/claude" && \
