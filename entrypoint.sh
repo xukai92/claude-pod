@@ -26,6 +26,12 @@ fi
 
 CLAUDE_CMD="${CLAUDE_POD_CMD:-claude}"
 
+# Prefer the in-image binary (installed at build time on macOS) over
+# any host-mounted Mach-O binary that the login shell's PATH might find.
+if [ "$CLAUDE_CMD" = "claude" ] && [ -x /usr/local/bin/claude ]; then
+    CLAUDE_CMD=/usr/local/bin/claude
+fi
+
 # Run through a login shell so PATH and env are set up.
 case "$USER_SHELL" in
     */fish)
