@@ -74,6 +74,16 @@ extra_env = ["GITHUB_TOKEN"]
 - Auth via OAuth credentials in `~/.claude` or `ANTHROPIC_API_KEY` env var
 - Use `--network=none` for tasks that don't need network access
 
+## macOS
+
+claude-pod works on macOS via Podman's Linux VM (`podman machine`). The container is still Fedora — only the host-side script adapts.
+
+- **Install Podman**: `brew install podman`
+- **Podman machine**: Auto-initialized and started if not already running
+- **Paths**: Most directories under `$HOME` are mounted automatically. `~/Library`, `~/.config`, `~/.local`, and `~/.Trash` are skipped (macOS-specific or contain Mach-O binaries). Paths outside `$HOME` may not be available inside the VM
+- **No `--userns=keep-id`**: Not supported with `podman machine`; skipped automatically on macOS
+- **Home dir**: The container user's home is set to match the host (e.g. `/Users/kai`) so bind-mount paths align
+
 ## Development
 
 From a local clone:
