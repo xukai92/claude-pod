@@ -84,6 +84,9 @@ assert_contains "--help shows --detach" "$out" "--detach"
 assert_contains "--help shows --network" "$out" "--network"
 assert_contains "--help shows --host-loopback" "$out" "--host-loopback"
 assert_contains "--help shows --notify" "$out" "--notify"
+assert_contains "--help shows --env" "$out" "--env"
+assert_contains "--help shows --gpu" "$out" "--gpu"
+assert_contains "--help shows --no-yolo" "$out" "--no-yolo"
 assert_contains "--help shows config path" "$out" "config.toml"
 
 # -V alias
@@ -154,6 +157,39 @@ echo "=== Helper function tests ==="
     cp_phys="${cp_dir_phys}/$(basename "$CP")"
     assert_eq "portable_realpath: resolves to physical path" "$cp_phys" "$rp_out"
     assert_eq "portable_realpath: preserves PWD" "$cwd_before" "$(pwd)"
+
+    # parse_shared_flags: typical case with all flag types
+    env_vars=(); gpu=false; host_loopback=false; max_memory=""; network=""
+    ports=(); writable_dirs=(); _parse_remaining=()
+    parse_shared_flags -e FOO=bar --gpu --host-loopback --max-memory 4g \
+        --network=host -p 3000:3000 --port=8080:80 -wd /tmp --unknown extra
+    assert_eq "parse_shared_flags: env_vars" "FOO=bar" "${env_vars[0]}"
+    assert_eq "parse_shared_flags: gpu" "true" "$gpu"
+    assert_eq "parse_shared_flags: host_loopback" "true" "$host_loopback"
+    assert_eq "parse_shared_flags: max_memory" "4g" "$max_memory"
+    assert_eq "parse_shared_flags: network" "host" "$network"
+    assert_eq "parse_shared_flags: ports count" "2" "${#ports[@]}"
+    assert_eq "parse_shared_flags: port 0" "3000:3000" "${ports[0]}"
+    assert_eq "parse_shared_flags: port 1" "8080:80" "${ports[1]}"
+    assert_eq "parse_shared_flags: writable_dirs" "/tmp" "${writable_dirs[0]}"
+    assert_eq "parse_shared_flags: remaining 0" "--unknown" "${_parse_remaining[0]}"
+    assert_eq "parse_shared_flags: remaining 1" "extra" "${_parse_remaining[1]}"
+
+    # parse_shared_flags: empty input leaves defaults
+    env_vars=(); gpu=false; host_loopback=false; max_memory=""; network=""
+    ports=(); writable_dirs=(); _parse_remaining=()
+    parse_shared_flags
+    assert_eq "parse_shared_flags: empty env_vars" "0" "${#env_vars[@]}"
+    assert_eq "parse_shared_flags: empty remaining" "0" "${#_parse_remaining[@]}"
+    assert_eq "parse_shared_flags: gpu default" "false" "$gpu"
+
+    # parse_shared_flags: --env missing value (should die/exit non-zero)
+    out=$(bash -c "source <(sed '/^case/,\$d' '$CP'); parse_shared_flags --env" 2>&1 || true)
+    assert_contains "parse_shared_flags: --env missing value errors" "$out" "error"
+
+    # parse_shared_flags: --port missing value
+    out=$(bash -c "source <(sed '/^case/,\$d' '$CP'); parse_shared_flags --port" 2>&1 || true)
+    assert_contains "parse_shared_flags: --port missing value errors" "$out" "error"
 )
 
 # --- Entrypoint tests ---
@@ -166,6 +202,7 @@ assert_contains "entrypoint: fish path" "$ep" '*/fish)'
 assert_contains "entrypoint: dangerously-skip-permissions" "$ep" "--dangerously-skip-permissions"
 assert_contains "entrypoint: CLAUDE_POD_SHELL check" "$ep" "CLAUDE_POD_SHELL"
 assert_contains "entrypoint: NOTIFY_CMD support" "$ep" "NOTIFY_CMD"
+assert_contains "entrypoint: CLAUDE_POD_NO_YOLO support" "$ep" "CLAUDE_POD_NO_YOLO"
 
 # --- Structure tests ---
 echo ""
@@ -174,7 +211,7 @@ echo "=== Structure tests ==="
 # All expected functions exist
 for fn in die require_image require_podman suggest_podman_install mount_home_items \
           cwd_needs_mount resolve_dirs has_local_build_files build_base_args \
-          portable_realpath is_macos ensure_podman_machine \
+          portable_realpath is_macos ensure_podman_machine parse_shared_flags \
           cmd_build cmd_run cmd_shell cmd_exec cmd_ps cmd_clean cmd_install \
           cfg_get cfg_get_array; do
     grep -q "^${fn}()" "$CP" && pass "function $fn defined" || fail "function $fn defined" "not found"

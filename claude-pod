@@ -9,7 +9,7 @@ fi
 
 set -euo pipefail
 
-VERSION="0.6.0"
+VERSION="0.7.0"
 IMAGE="claude-pod:latest"
 CONFIG_FILE="${HOME}/.config/claude-pod/config.toml"
 CONTAINER_NAME_PREFIX="claude-pod"
@@ -263,17 +263,60 @@ cmd_build() {
     podman build -t "$IMAGE" "${build_args[@]}" "$BUILD_DIR"
 }
 
+# Parse shared flags used by both cmd_run and cmd_shell.
+# Caller must declare: env_vars, gpu, host_loopback, max_memory, network, ports, writable_dirs.
+# Remaining (unconsumed) args are left in _parse_remaining.
+parse_shared_flags() {
+    _parse_remaining=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -e|--env)
+                [[ $# -lt 2 ]] && die "Flag --env requires a value (e.g. MY_VAR=val)"
+                env_vars+=("$2"); shift 2 ;;
+            --gpu)           gpu=true; shift ;;
+            --host-loopback) host_loopback=true; shift ;;
+            --max-memory)
+                [[ $# -lt 2 ]] && die "Flag --max-memory requires a value (e.g. 4g)"
+                max_memory="$2"; shift 2 ;;
+            --max-memory=*)
+                max_memory="${1#--max-memory=}"
+                [[ -z "$max_memory" ]] && die "Flag --max-memory requires a value (e.g. 4g)"
+                shift ;;
+            --network=*)
+                network="${1#--network=}"
+                [[ -z "$network" ]] && die "Flag --network requires a value (e.g. host)"
+                shift ;;
+            -p|--port)
+                [[ $# -lt 2 ]] && die "Flag --port requires a value (e.g. 3000:3000)"
+                ports+=("$2"); shift 2 ;;
+            --port=*)
+                local port_mapping="${1#--port=}"
+                [[ -z "$port_mapping" ]] && die "Flag --port requires a value (e.g. 3000:3000)"
+                ports+=("$port_mapping"); shift ;;
+            -wd|--writable-dir)
+                [[ $# -lt 2 ]] && die "Flag --writable-dir requires a directory"
+                writable_dirs+=("$2"); shift 2 ;;
+            *)  # Unknown flag — collect remaining args
+                _parse_remaining=("$@")
+                return ;;
+        esac
+    done
+}
+
 cmd_run() {
     require_podman
     ensure_podman_machine
     require_image
 
     local detach=false
+    local gpu=false
     local host_loopback=false
     local keep_groups=false
+    local no_yolo=false
     local max_memory=""
     local network=""
     local notify_cmd=""
+    local env_vars=()
     local ports=()
     local writable_dirs=()
     local claude_args=()
@@ -293,20 +336,12 @@ cmd_run() {
         fi
     fi
 
-    # Parse flags
+    # Parse run-specific flags, then shared flags
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --detach)        detach=true; shift ;;
-            --host-loopback) host_loopback=true; shift ;;
             --keep-groups)   keep_groups=true; shift ;;
-            --max-memory)
-                [[ $# -lt 2 ]] && die "Flag --max-memory requires a value (e.g. 4g)"
-                max_memory="$2"; shift 2 ;;
-            --max-memory=*)
-                max_memory="${1#--max-memory=}"
-                [[ -z "$max_memory" ]] && die "Flag --max-memory requires a value (e.g. 4g)"
-                shift ;;
-            --network=*)     network="${1#--network=}"; shift ;;
+            --no-yolo)       no_yolo=true; shift ;;
             --notify)
                 # Shorthand for ntfy.sh: --notify <topic>
                 [[ $# -lt 2 ]] && die "Flag --notify requires a topic"
@@ -319,18 +354,17 @@ cmd_run() {
             --notify-cmd)
                 [[ $# -lt 2 ]] && die "Flag --notify-cmd requires a command"
                 notify_cmd="$2"; shift 2 ;;
-            -p|--port)
-                [[ $# -lt 2 ]] && die "Flag --port requires a value (e.g. 3000:3000)"
-                ports+=("$2"); shift 2 ;;
-            --port=*)
-                local port_mapping="${1#--port=}"
-                [[ -z "$port_mapping" ]] && die "Flag --port requires a value (e.g. 3000:3000)"
-                ports+=("$port_mapping"); shift ;;
-            -wd|--writable-dir)
-                [[ $# -lt 2 ]] && die "Flag --writable-dir requires a directory"
-                writable_dirs+=("$2"); shift 2 ;;
             --)              shift; claude_args=("$@"); break ;;
-            -*)              claude_args=("$@"); break ;;
+            -*)
+                # Try shared flags; if parse_shared_flags doesn't consume it,
+                # treat remainder as claude args
+                parse_shared_flags "$@"
+                if [[ ${#_parse_remaining[@]} -eq $# ]]; then
+                    # Nothing consumed — these are claude args
+                    claude_args=("$@"); break
+                fi
+                set -- "${_parse_remaining[@]+"${_parse_remaining[@]}"}"
+                ;;
             *)               die "Unknown command: $1. See 'claude-pod --help'." ;;
         esac
     done
@@ -349,6 +383,11 @@ cmd_run() {
         args+=(--memory="$max_memory")
     fi
 
+    # GPU passthrough (podman CDI device syntax)
+    if $gpu; then
+        args+=(--device "nvidia.com/gpu=all")
+    fi
+
     # OAuth creds in ~/.claude work too, so API key is optional
     if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
         args+=(-e ANTHROPIC_API_KEY)
@@ -356,6 +395,10 @@ cmd_run() {
 
     if [[ -n "$notify_cmd" ]]; then
         args+=(-e "NOTIFY_CMD=${notify_cmd}")
+    fi
+
+    if $no_yolo; then
+        args+=(-e CLAUDE_POD_NO_YOLO=1)
     fi
 
     if $host_loopback && [[ -n "$network" ]]; then
@@ -377,6 +420,11 @@ cmd_run() {
         args+=(-e CLAUDE_POD_CMD)
     fi
 
+    # Ad-hoc env vars from -e/--env flags
+    for var in "${env_vars[@]}"; do
+        args+=(-e "$var")
+    done
+
     # Extra env vars from config
     while IFS= read -r var; do
         [[ -n "$var" ]] && args+=(-e "$var")
@@ -395,12 +443,12 @@ cmd_run() {
 
     if $detach; then
         args+=(-d)
-        podman run "${args[@]}" "$IMAGE" "${claude_args[@]}"
+    elif [ -t 0 ]; then
+        args+=(-it)  # interactive TTY
     else
-        # Interactive TTY for normal usage
-        args+=(-it)
-        podman run "${args[@]}" "$IMAGE" "${claude_args[@]}"
+        args+=(-i)   # stdin only, no TTY (piped input)
     fi
+    podman run "${args[@]}" "$IMAGE" "${claude_args[@]}"
 }
 
 cmd_shell() {
@@ -408,11 +456,56 @@ cmd_shell() {
     ensure_podman_machine
     require_image
 
+    local gpu=false
+    local host_loopback=false
+    local max_memory=""
+    local network=""
+    local env_vars=()
+    local ports=()
+    local writable_dirs=()
+
+    # Parse shared flags
+    parse_shared_flags "$@"
+    if [[ ${#_parse_remaining[@]} -gt 0 ]]; then
+        die "Unknown shell flag: ${_parse_remaining[0]}. See 'claude-pod --help'."
+    fi
+
     local cwd
     cwd="$(pwd)"
 
     local shell_args=(-it)
-    build_base_args shell_args "$cwd"
+    build_base_args shell_args "$cwd" "${writable_dirs[*]:-}"
+
+    if [[ -n "$max_memory" ]]; then
+        shell_args+=(--memory="$max_memory")
+    fi
+
+    if $gpu; then
+        shell_args+=(--device "nvidia.com/gpu=all")
+    fi
+
+    if $host_loopback && [[ -n "$network" ]]; then
+        die "--host-loopback and --network are mutually exclusive"
+    fi
+    if $host_loopback; then
+        shell_args+=(--network=slirp4netns:allow_host_loopback=true)
+    elif [[ -n "$network" ]]; then
+        shell_args+=(--network="$network")
+    fi
+
+    for port in "${ports[@]}"; do
+        shell_args+=(-p "$port")
+    done
+
+    for var in "${env_vars[@]}"; do
+        shell_args+=(-e "$var")
+    done
+
+    # Extra writable dirs
+    for dir in "${writable_dirs[@]}"; do
+        [[ "$dir" == "$HOME" ]] && continue
+        shell_args+=(-v "${dir}:${dir}")
+    done
 
     podman run "${shell_args[@]}" -e CLAUDE_POD_SHELL=1 "$IMAGE"
 }
@@ -523,22 +616,27 @@ Commands:
   build                Build the container image
   run [flags] [-- <claude args>]
                        Start an interactive Claude Code session
-  shell                Drop into a bash shell in the container
+  shell [flags]        Drop into a bash shell in the container
   exec <command>       Run a command in a running container
   ps                   List running claude-pod containers
   clean                Remove volumes and image
 
-Run flags:
-  --detach             Run in background (print container ID)
+Shared flags (run + shell):
+  -e, --env <VAR[=VAL]>  Pass environment variable to container (repeatable)
+  --gpu                Enable GPU passthrough (nvidia)
   --host-loopback      Expose host loopback to container (host reachable at 10.0.2.2)
-  --network=none       Disable all networking
-  --notify <topic>     Send ntfy.sh notification when session ends
-  --notify-cmd <cmd>   Run custom command on exit ($WORKSPACE, $EXIT_CODE)
-  --keep-groups        Preserve supplementary groups in container
   --max-memory <size>  Set container memory limit (e.g. 4g, 512m)
+  --network=<mode>     Podman network mode (e.g. none, host)
   -p, --port <port>    Expose a port (e.g. 3000:3000, repeatable)
   -wd, --writable-dir <path>
                        Mount a dir read-write (can be repeated)
+
+Run-only flags:
+  --detach             Run in background (print container ID)
+  --keep-groups        Preserve supplementary groups in container
+  --no-yolo            Don't pass --dangerously-skip-permissions to AI CLIs
+  --notify <topic>     Send ntfy.sh notification when session ends
+  --notify-cmd <cmd>   Run custom command on exit ($WORKSPACE, $EXIT_CODE)
 
 Config: ~/.config/claude-pod/config.toml
 EOF

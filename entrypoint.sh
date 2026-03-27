@@ -32,13 +32,32 @@ if [ "$CLAUDE_CMD" = "claude" ] && [ -x /usr/local/bin/claude ]; then
     CLAUDE_CMD=/usr/local/bin/claude
 fi
 
+# Determine whether to append --dangerously-skip-permissions.
+# AI CLIs get the flag unless CLAUDE_POD_NO_YOLO is set; other commands run raw.
+SKIP_PERMS=""
+case "$CLAUDE_CMD" in
+    *laude|*opencode)
+        if [ -z "${CLAUDE_POD_NO_YOLO:-}" ]; then
+            SKIP_PERMS="--dangerously-skip-permissions"
+        fi
+        ;;
+esac
+
 # Run through a login shell so PATH and env are set up.
 case "$USER_SHELL" in
     */fish)
-        "$USER_SHELL" -l -c '$argv[1] --dangerously-skip-permissions $argv[2..-1]' -- "$CLAUDE_CMD" "$@"
+        if [ -n "$SKIP_PERMS" ]; then
+            "$USER_SHELL" -l -c '$argv[1] --dangerously-skip-permissions $argv[2..-1]' -- "$CLAUDE_CMD" "$@"
+        else
+            "$USER_SHELL" -l -c '$argv[1] $argv[2..-1]' -- "$CLAUDE_CMD" "$@"
+        fi
         ;;
     *)
-        "$USER_SHELL" -l -c '"$0" --dangerously-skip-permissions "$@"' "$CLAUDE_CMD" "$@"
+        if [ -n "$SKIP_PERMS" ]; then
+            "$USER_SHELL" -l -c '"$0" --dangerously-skip-permissions "$@"' "$CLAUDE_CMD" "$@"
+        else
+            "$USER_SHELL" -l -c '"$0" "$@"' "$CLAUDE_CMD" "$@"
+        fi
         ;;
 esac
 exit_code=$?
