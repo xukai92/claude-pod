@@ -9,7 +9,7 @@ fi
 
 set -euo pipefail
 
-VERSION="0.5.0"
+VERSION="0.6.0"
 IMAGE="claude-pod:latest"
 CONFIG_FILE="${HOME}/.config/claude-pod/config.toml"
 CONTAINER_NAME_PREFIX="claude-pod"
@@ -269,6 +269,7 @@ cmd_run() {
     require_image
 
     local detach=false
+    local host_loopback=false
     local keep_groups=false
     local max_memory=""
     local network=""
@@ -296,6 +297,7 @@ cmd_run() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --detach)        detach=true; shift ;;
+            --host-loopback) host_loopback=true; shift ;;
             --keep-groups)   keep_groups=true; shift ;;
             --max-memory)
                 [[ $# -lt 2 ]] && die "Flag --max-memory requires a value (e.g. 4g)"
@@ -356,7 +358,12 @@ cmd_run() {
         args+=(-e "NOTIFY_CMD=${notify_cmd}")
     fi
 
-    if [[ -n "$network" ]]; then
+    if $host_loopback && [[ -n "$network" ]]; then
+        die "--host-loopback and --network are mutually exclusive"
+    fi
+    if $host_loopback; then
+        args+=(--network=slirp4netns:allow_host_loopback=true)
+    elif [[ -n "$network" ]]; then
         args+=(--network="$network")
     fi
 
@@ -523,6 +530,7 @@ Commands:
 
 Run flags:
   --detach             Run in background (print container ID)
+  --host-loopback      Expose host loopback to container (host reachable at 10.0.2.2)
   --network=none       Disable all networking
   --notify <topic>     Send ntfy.sh notification when session ends
   --notify-cmd <cmd>   Run custom command on exit ($WORKSPACE, $EXIT_CODE)
