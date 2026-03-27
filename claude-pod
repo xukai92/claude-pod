@@ -334,7 +334,6 @@ cmd_run() {
     fi
 
     # Parse run-specific flags, then shared flags
-    local remaining=()
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --detach)        detach=true; shift ;;
@@ -356,7 +355,6 @@ cmd_run() {
             -*)
                 # Try shared flags; if parse_shared_flags doesn't consume it,
                 # treat remainder as claude args
-                local before=$#
                 parse_shared_flags "$@"
                 if [[ ${#_parse_remaining[@]} -eq $# ]]; then
                     # Nothing consumed — these are claude args
@@ -382,13 +380,9 @@ cmd_run() {
         args+=(--memory="$max_memory")
     fi
 
-    # GPU passthrough
+    # GPU passthrough (podman CDI device syntax)
     if $gpu; then
-        if command -v podman &>/dev/null; then
-            args+=(--device "nvidia.com/gpu=all")
-        else
-            args+=(--gpus all)
-        fi
+        args+=(--device "nvidia.com/gpu=all")
     fi
 
     # OAuth creds in ~/.claude work too, so API key is optional
@@ -484,11 +478,7 @@ cmd_shell() {
     fi
 
     if $gpu; then
-        if command -v podman &>/dev/null; then
-            shell_args+=(--device "nvidia.com/gpu=all")
-        else
-            shell_args+=(--gpus all)
-        fi
+        shell_args+=(--device "nvidia.com/gpu=all")
     fi
 
     if $host_loopback && [[ -n "$network" ]]; then
