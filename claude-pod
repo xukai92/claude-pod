@@ -282,7 +282,10 @@ parse_shared_flags() {
                 max_memory="${1#--max-memory=}"
                 [[ -z "$max_memory" ]] && die "Flag --max-memory requires a value (e.g. 4g)"
                 shift ;;
-            --network=*)     network="${1#--network=}"; shift ;;
+            --network=*)
+                network="${1#--network=}"
+                [[ -z "$network" ]] && die "Flag --network requires a value (e.g. host)"
+                shift ;;
             -p|--port)
                 [[ $# -lt 2 ]] && die "Flag --port requires a value (e.g. 3000:3000)"
                 ports+=("$2"); shift 2 ;;
