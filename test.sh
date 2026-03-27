@@ -82,6 +82,7 @@ assert_contains "--help shows --port" "$out" "--port"
 assert_contains "--help shows --writable-dir" "$out" "--writable-dir"
 assert_contains "--help shows --detach" "$out" "--detach"
 assert_contains "--help shows --network" "$out" "--network"
+assert_contains "--help shows --host-loopback" "$out" "--host-loopback"
 assert_contains "--help shows --notify" "$out" "--notify"
 assert_contains "--help shows config path" "$out" "config.toml"
 
