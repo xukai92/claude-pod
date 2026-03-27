@@ -36,7 +36,7 @@ fi
 # AI CLIs get the flag unless CLAUDE_POD_NO_YOLO is set; other commands run raw.
 SKIP_PERMS=""
 case "$CLAUDE_CMD" in
-    *laude|opencode)
+    *laude|*opencode)
         if [ -z "${CLAUDE_POD_NO_YOLO:-}" ]; then
             SKIP_PERMS="--dangerously-skip-permissions"
         fi
