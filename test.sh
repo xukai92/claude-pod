@@ -84,6 +84,9 @@ assert_contains "--help shows --detach" "$out" "--detach"
 assert_contains "--help shows --network" "$out" "--network"
 assert_contains "--help shows --host-loopback" "$out" "--host-loopback"
 assert_contains "--help shows --notify" "$out" "--notify"
+assert_contains "--help shows --env" "$out" "--env"
+assert_contains "--help shows --gpu" "$out" "--gpu"
+assert_contains "--help shows --no-yolo" "$out" "--no-yolo"
 assert_contains "--help shows config path" "$out" "config.toml"
 
 # -V alias
@@ -166,6 +169,7 @@ assert_contains "entrypoint: fish path" "$ep" '*/fish)'
 assert_contains "entrypoint: dangerously-skip-permissions" "$ep" "--dangerously-skip-permissions"
 assert_contains "entrypoint: CLAUDE_POD_SHELL check" "$ep" "CLAUDE_POD_SHELL"
 assert_contains "entrypoint: NOTIFY_CMD support" "$ep" "NOTIFY_CMD"
+assert_contains "entrypoint: CLAUDE_POD_NO_YOLO support" "$ep" "CLAUDE_POD_NO_YOLO"
 
 # --- Structure tests ---
 echo ""
@@ -174,7 +178,7 @@ echo "=== Structure tests ==="
 # All expected functions exist
 for fn in die require_image require_podman suggest_podman_install mount_home_items \
           cwd_needs_mount resolve_dirs has_local_build_files build_base_args \
-          portable_realpath is_macos ensure_podman_machine \
+          portable_realpath is_macos ensure_podman_machine parse_shared_flags \
           cmd_build cmd_run cmd_shell cmd_exec cmd_ps cmd_clean cmd_install \
           cfg_get cfg_get_array; do
     grep -q "^${fn}()" "$CP" && pass "function $fn defined" || fail "function $fn defined" "not found"
