@@ -2,7 +2,11 @@
 SCRIPT_DIR="$(dirname "$0")"
 if [ -f "$SCRIPT_DIR/claude-pod.py" ]; then
     exec python3 "$SCRIPT_DIR/claude-pod.py" "$@"
-else
+elif [ -f "${HOME}/.local/share/claude-pod/claude-pod.py" ]; then
     # Fallback to data dir when installed via 'claude-pod install'
     exec python3 "${HOME}/.local/share/claude-pod/claude-pod.py" "$@"
+else
+    echo "claude-pod: unable to locate claude-pod.py in \"$SCRIPT_DIR\" or \"${HOME}/.local/share/claude-pod\"." >&2
+    echo "claude-pod: run 'claude-pod install' or ensure claude-pod.py is alongside this wrapper." >&2
+    exit 1
 fi
