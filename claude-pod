@@ -9,9 +9,10 @@ fi
 
 set -euo pipefail
 
-VERSION="0.7.0"
+VERSION="0.8.0"
 IMAGE="claude-pod:latest"
 CONFIG_FILE="${HOME}/.config/claude-pod/config.toml"
+PROJECT_CONFIG=""  # set to CWD/.claude-pod.toml if it exists
 CONTAINER_NAME_PREFIX="claude-pod"
 DATA_DIR="${HOME}/.local/share/claude-pod"
 HOST_OS="$(uname -s)"
@@ -21,30 +22,32 @@ is_macos() { [[ "$HOST_OS" == "Darwin" ]]; }
 # --- Config file parsing (simple TOML subset) ---
 
 cfg_get() {
-    # Extract a key from the config file. Handles simple key = "value" pairs.
-    local section="$1" key="$2"
-    if [[ -f "$CONFIG_FILE" ]]; then
+    # Extract a key from a config file. Handles simple key = "value" pairs.
+    # Optional 3rd arg overrides which file to read.
+    local section="$1" key="$2" file="${3:-$CONFIG_FILE}"
+    if [[ -f "$file" ]]; then
         awk -v section="[$section]" -v key="$key" '
             $0 == section { in_section=1; next }
             /^\[/ { in_section=0 }
-            in_section && $1 == key {
+            in_section && $0 ~ ("^[[:space:]]*" key "[[:space:]]*=") {
                 # Strip key = "value" down to value
-                sub(/^[^=]*=\s*/, "")
+                sub(/^[^=]*=[[:space:]]*/, "")
                 gsub(/^"|"$/, "")
                 print
             }
-        ' "$CONFIG_FILE"
+        ' "$file"
     fi
 }
 
 cfg_get_array() {
     # Extract a TOML array value as newline-separated items.
-    local section="$1" key="$2"
-    if [[ -f "$CONFIG_FILE" ]]; then
+    # Optional 3rd arg overrides which file to read.
+    local section="$1" key="$2" file="${3:-$CONFIG_FILE}"
+    if [[ -f "$file" ]]; then
         awk -v section="[$section]" -v key="$key" '
             $0 == section { in_section=1; next }
             /^\[/ { in_section=0 }
-            in_section && $1 == key {
+            in_section && $0 ~ ("^[[:space:]]*" key "[[:space:]]*=") {
                 # Extract the array contents between [ ]
                 s = $0
                 sub(/^[^[]*\[/, "", s)
@@ -55,7 +58,48 @@ cfg_get_array() {
                     if (items[i] != "") print items[i]
                 }
             }
-        ' "$CONFIG_FILE"
+        ' "$file"
+    fi
+}
+
+cfg_has_key() {
+    # Check if a key exists in a config file (returns 0 if found).
+    local section="$1" key="$2" file="${3:-$CONFIG_FILE}"
+    [[ -f "$file" ]] && awk -v section="[$section]" -v key="$key" '
+        $0 == section { in_section=1; next }
+        /^\[/ { in_section=0 }
+        in_section && $0 ~ ("^[[:space:]]*" key "[[:space:]]*=") { found=1; exit }
+        END { exit !found }
+    ' "$file"
+}
+
+cfg_get_merged() {
+    # Get a scalar from project config (wins) or global config.
+    # Project config wins even if value is empty (allows overriding to blank).
+    local section="$1" key="$2"
+    if [[ -n "$PROJECT_CONFIG" ]] && cfg_has_key "$section" "$key" "$PROJECT_CONFIG"; then
+        cfg_get "$section" "$key" "$PROJECT_CONFIG"
+        return
+    fi
+    cfg_get "$section" "$key" "$CONFIG_FILE"
+}
+
+cfg_get_array_merged() {
+    # Get an array from global config, then append project config entries.
+    local section="$1" key="$2"
+    cfg_get_array "$section" "$key" "$CONFIG_FILE"
+    if [[ -n "$PROJECT_CONFIG" ]]; then
+        cfg_get_array "$section" "$key" "$PROJECT_CONFIG"
+    fi
+}
+
+load_project_config() {
+    # Set PROJECT_CONFIG if .claude-pod.toml exists in the given directory.
+    local dir="${1:-.}"
+    if [[ -f "${dir}/.claude-pod.toml" ]]; then
+        PROJECT_CONFIG="${dir}/.claude-pod.toml"
+    else
+        PROJECT_CONFIG=""
     fi
 }
 
@@ -308,6 +352,8 @@ cmd_run() {
     ensure_podman_machine
     require_image
 
+    load_project_config "$(pwd)"
+
     local detach=false
     local gpu=false
     local host_loopback=false
@@ -322,11 +368,11 @@ cmd_run() {
     local claude_args=()
 
     # Default notify command from config
-    notify_cmd=$(cfg_get "defaults" "notify_command")
+    notify_cmd=$(cfg_get_merged "defaults" "notify_command")
     # Backward-compatible fallback for legacy notify_topic
     if [[ -z "$notify_cmd" ]]; then
         local legacy_topic
-        legacy_topic=$(cfg_get "defaults" "notify_topic") || true
+        legacy_topic=$(cfg_get_merged "defaults" "notify_topic") || true
         if [[ -n "${legacy_topic:-}" ]]; then
             if [[ ! "$legacy_topic" =~ ^[A-Za-z0-9._-]+$ ]]; then
                 die "Invalid notify topic '$legacy_topic' in config. Allowed characters: letters, digits, '.', '_', '-'"
@@ -371,6 +417,12 @@ cmd_run() {
 
     local cwd
     cwd="$(pwd)"
+
+    # Merge writable dirs from config before build_base_args so mount_home_items
+    # sees them and can mark matching $HOME entries as rw.
+    while IFS= read -r dir; do
+        [[ -n "$dir" ]] && writable_dirs+=("$dir")
+    done < <(cfg_get_array_merged "defaults" "writable_dirs")
 
     local args=(--name "${CONTAINER_NAME_PREFIX}-$(date +%s)")
     build_base_args args "$cwd" "${writable_dirs[*]:-}"
@@ -425,10 +477,10 @@ cmd_run() {
         args+=(-e "$var")
     done
 
-    # Extra env vars from config
+    # Extra env vars from config (global + project)
     while IFS= read -r var; do
         [[ -n "$var" ]] && args+=(-e "$var")
-    done < <(cfg_get_array "defaults" "extra_env")
+    done < <(cfg_get_array_merged "defaults" "extra_env")
 
     # Extra writable dirs (top-level $HOME entries handled by mount_home_items)
     for dir in "${writable_dirs[@]}"; do
@@ -436,10 +488,10 @@ cmd_run() {
         args+=(-v "${dir}:${dir}")
     done
 
-    # Extra volumes from config
+    # Extra volumes from config (global + project)
     while IFS= read -r vol; do
         [[ -n "$vol" ]] && args+=(-v "$vol")
-    done < <(cfg_get_array "defaults" "extra_volumes")
+    done < <(cfg_get_array_merged "defaults" "extra_volumes")
 
     if $detach; then
         args+=(-d)
@@ -455,6 +507,8 @@ cmd_shell() {
     require_podman
     ensure_podman_machine
     require_image
+
+    load_project_config "$(pwd)"
 
     local gpu=false
     local host_loopback=false
@@ -472,6 +526,12 @@ cmd_shell() {
 
     local cwd
     cwd="$(pwd)"
+
+    # Merge writable dirs from config before build_base_args so mount_home_items
+    # sees them and can mark matching $HOME entries as rw.
+    while IFS= read -r dir; do
+        [[ -n "$dir" ]] && writable_dirs+=("$dir")
+    done < <(cfg_get_array_merged "defaults" "writable_dirs")
 
     local shell_args=(-it)
     build_base_args shell_args "$cwd" "${writable_dirs[*]:-}"
@@ -500,6 +560,11 @@ cmd_shell() {
     for var in "${env_vars[@]}"; do
         shell_args+=(-e "$var")
     done
+
+    # Extra env vars from config (global + project)
+    while IFS= read -r var; do
+        [[ -n "$var" ]] && shell_args+=(-e "$var")
+    done < <(cfg_get_array_merged "defaults" "extra_env")
 
     # Extra writable dirs
     for dir in "${writable_dirs[@]}"; do
@@ -638,7 +703,10 @@ Run-only flags:
   --notify <topic>     Send ntfy.sh notification when session ends
   --notify-cmd <cmd>   Run custom command on exit ($WORKSPACE, $EXIT_CODE)
 
-Config: ~/.config/claude-pod/config.toml
+Config:
+  Global:  ~/.config/claude-pod/config.toml
+  Project: .claude-pod.toml (in CWD, optional)
+           Arrays merge (project appends to global); scalars override.
 EOF
         exit 0
         ;;
