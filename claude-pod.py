@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import grp
 import os
 import platform
 import pwd
@@ -35,15 +34,20 @@ def is_macos() -> bool:
 
 # --- Config file parsing ---
 
+_toml_cache: dict[Path, dict] = {}
+
 
 def _load_toml(path: Path) -> dict:
+    if path in _toml_cache:
+        return _toml_cache[path]
+    result: dict = {}
     if path.is_file():
         try:
-            return tomllib.loads(path.read_text())
+            result = tomllib.loads(path.read_text())
         except Exception as exc:
             print(f"warning: failed to load config '{path}': {exc}", file=sys.stderr)
-            return {}
-    return {}
+    _toml_cache[path] = result
+    return result
 
 
 def cfg_get(section: str, key: str, path: Path = CONFIG_FILE) -> str:
@@ -305,7 +309,7 @@ def cmd_build(_args: argparse.Namespace) -> None:
 
     shell_name = os.path.basename(os.environ.get("SHELL", "bash"))
     try:
-        shell_name = os.path.basename(pwd.getpwnam(os.getlogin()).pw_shell)
+        shell_name = os.path.basename(pwd.getpwuid(os.getuid()).pw_shell)
     except Exception:
         pass
     if shell_name not in ("bash", "zsh", "fish"):
@@ -691,8 +695,27 @@ def main() -> None:
     args, unknown = parser.parse_known_args()
 
     if getattr(args, "command", None) == "run":
-        # Forward unknown args as claude_args
-        args.claude_args = unknown
+        # Forward unknown args as claude_args.
+        # Before "--": option-like tokens and their values are forwarded;
+        # bare positionals not preceded by an option are rejected (bash parity).
+        # After "--": everything is forwarded unconditionally.
+        forwarded: list[str] = []
+        if unknown:
+            if "--" in unknown:
+                sep = unknown.index("--")
+                pre, post = unknown[:sep], unknown[sep + 1:]
+            else:
+                pre, post = unknown, []
+            prev_was_option = False
+            for tok in pre:
+                if tok.startswith("-"):
+                    prev_was_option = True
+                elif prev_was_option:
+                    prev_was_option = False  # value of previous option
+                else:
+                    parser.error(f"unrecognized argument: {tok}")
+            forwarded = pre + post
+        args.claude_args = forwarded
     else:
         args.claude_args = []
         if unknown:
