@@ -29,9 +29,9 @@ cfg_get() {
         awk -v section="[$section]" -v key="$key" '
             $0 == section { in_section=1; next }
             /^\[/ { in_section=0 }
-            in_section && $1 == key {
+            in_section && $0 ~ ("^[[:space:]]*" key "[[:space:]]*=") {
                 # Strip key = "value" down to value
-                sub(/^[^=]*=\s*/, "")
+                sub(/^[^=]*=[[:space:]]*/, "")
                 gsub(/^"|"$/, "")
                 print
             }
@@ -47,7 +47,7 @@ cfg_get_array() {
         awk -v section="[$section]" -v key="$key" '
             $0 == section { in_section=1; next }
             /^\[/ { in_section=0 }
-            in_section && $1 == key {
+            in_section && $0 ~ ("^[[:space:]]*" key "[[:space:]]*=") {
                 # Extract the array contents between [ ]
                 s = $0
                 sub(/^[^[]*\[/, "", s)
@@ -703,7 +703,10 @@ Run-only flags:
   --notify <topic>     Send ntfy.sh notification when session ends
   --notify-cmd <cmd>   Run custom command on exit ($WORKSPACE, $EXIT_CODE)
 
-Config: ~/.config/claude-pod/config.toml
+Config:
+  Global:  ~/.config/claude-pod/config.toml
+  Project: .claude-pod.toml (in CWD, optional)
+           Arrays merge (project appends to global); scalars override.
 EOF
         exit 0
         ;;

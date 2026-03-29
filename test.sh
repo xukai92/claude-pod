@@ -314,6 +314,18 @@ notify_command="echo compact"
 TOML
     cfg_has_key "defaults" "notify_command" "$nospace_cfg" && pass "cfg_has_key: no-space key=value" \
         || fail "cfg_has_key: no-space key=value" "returned false"
+
+    # cfg_get with no-space format
+    out=$(cfg_get "defaults" "notify_command" "$nospace_cfg")
+    assert_eq "cfg_get: no-space key=value" "echo compact" "$out"
+
+    # cfg_get_array with no-space format
+    cat > "$nospace_cfg" <<'TOML'
+[defaults]
+writable_dirs=["/a", "/b"]
+TOML
+    out=$(cfg_get_array "defaults" "writable_dirs" "$nospace_cfg" | tr '\n' ',')
+    assert_eq "cfg_get_array: no-space key=value" "/a,/b," "$out"
     rm -f "$nospace_cfg"
 
     # --- cfg_get_array_merged: no global config = project only ---
