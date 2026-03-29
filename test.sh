@@ -4,7 +4,7 @@
 set -euo pipefail
 
 TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CP="$TEST_DIR/claude-pod"
+CP="$TEST_DIR/claude-pod.bash"
 RESULTS_FILE=$(mktemp)
 echo "0 0" > "$RESULTS_FILE"
 trap 'rm -f "$RESULTS_FILE"' EXIT
