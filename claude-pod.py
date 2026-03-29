@@ -413,7 +413,7 @@ def cmd_run(args: argparse.Namespace) -> None:
     else:
         podman_args.append("-i")
 
-    claude_args = args.claude_args or []
+    claude_args = getattr(args, "claude_args", None) or []
 
     if args.dry_run:
         parts = ["podman", "run"] + podman_args + [IMAGE] + claude_args
@@ -423,7 +423,8 @@ def cmd_run(args: argparse.Namespace) -> None:
     require_podman()
     ensure_podman_machine()
     require_image()
-    subprocess.run(["podman", "run"] + podman_args + [IMAGE] + claude_args)
+    result = subprocess.run(["podman", "run"] + podman_args + [IMAGE] + claude_args)
+    sys.exit(result.returncode)
 
 
 def cmd_shell(args: argparse.Namespace) -> None:
@@ -476,9 +477,10 @@ def cmd_shell(args: argparse.Namespace) -> None:
     require_podman()
     ensure_podman_machine()
     require_image()
-    subprocess.run(
+    result = subprocess.run(
         ["podman", "run"] + shell_args + ["-e", "CLAUDE_POD_SHELL=1", IMAGE]
     )
+    sys.exit(result.returncode)
 
 
 def cmd_exec(args: argparse.Namespace) -> None:
@@ -525,11 +527,14 @@ def cmd_install(args: argparse.Namespace) -> None:
     local_bin = HOME / ".local" / "bin"
     local_bin.mkdir(parents=True, exist_ok=True)
 
+    install_files = ("entrypoint.sh", "Containerfile", "claude-pod", "claude-pod.py")
+    download_files = install_files  # all files needed for remote install too
+
     script_path = Path(script_dir)
     if has_local_build_files():
         print(f"Installing from local source ({script_dir})...")
         if str(script_path) != str(data_dir):
-            for f in ("entrypoint.sh", "Containerfile", "claude-pod"):
+            for f in install_files:
                 src = script_path / f
                 if src.is_file():
                     shutil.copy2(str(src), str(data_dir / f))
@@ -539,7 +544,7 @@ def cmd_install(args: argparse.Namespace) -> None:
         github_raw = f"https://raw.githubusercontent.com/xukai92/claude-pod/{ref}"
         print(f"Downloading claude-pod from GitHub (ref: {ref})...")
         procs = []
-        for fname in ("claude-pod", "entrypoint.sh", "Containerfile"):
+        for fname in download_files:
             p = subprocess.Popen(
                 ["curl", "-fsSL", "--show-error",
                  f"{github_raw}/{fname}", "-o", str(data_dir / fname)],
@@ -550,14 +555,16 @@ def cmd_install(args: argparse.Namespace) -> None:
             if p.wait() != 0:
                 dl_failed = True
         if dl_failed:
-            for fname in ("claude-pod", "entrypoint.sh", "Containerfile"):
+            for fname in download_files:
                 (data_dir / fname).unlink(missing_ok=True)
             die("Download failed.")
 
-    dest = local_bin / "claude-pod"
-    dest.unlink(missing_ok=True)
-    shutil.copy2(str(data_dir / "claude-pod"), str(dest))
-    dest.chmod(0o755)
+    # Install both the wrapper and the Python script
+    for f in ("claude-pod", "claude-pod.py"):
+        dest = local_bin / f
+        dest.unlink(missing_ok=True)
+        shutil.copy2(str(data_dir / f), str(dest))
+        dest.chmod(0o755)
 
     print("Installed claude-pod to ~/.local/bin/claude-pod")
 
@@ -618,7 +625,6 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--no-yolo", action="store_true", help="Don't pass --dangerously-skip-permissions")
     run_parser.add_argument("--notify", metavar="TOPIC", help="Send ntfy.sh notification when session ends")
     run_parser.add_argument("--notify-cmd", metavar="CMD", help="Run custom command on exit")
-    run_parser.add_argument("claude_args", nargs="*", help="Arguments to pass to Claude Code")
     run_parser.set_defaults(func=cmd_run)
 
     # shell
@@ -668,7 +674,18 @@ def main() -> None:
     if len(sys.argv) < 2 or (len(sys.argv) >= 2 and sys.argv[1].startswith("-") and sys.argv[1] not in ("-V", "--version", "-h", "--help")):
         sys.argv.insert(1, "run")
 
-    args = parser.parse_args()
+    # Use parse_known_args so unrecognized flags pass through to Claude Code
+    # (matches bash behavior where unknown flags are forwarded)
+    args, unknown = parser.parse_known_args()
+
+    if getattr(args, "command", None) == "run":
+        # Forward unknown args as claude_args
+        args.claude_args = unknown
+    else:
+        args.claude_args = []
+        if unknown:
+            # For non-run subcommands, reject unknown flags
+            parser.parse_args()  # will error with usage message
 
     if hasattr(args, "func"):
         args.func(args)

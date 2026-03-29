@@ -1,2 +1,8 @@
 #!/bin/sh
-exec python3 "$(dirname "$0")/claude-pod.py" "$@"
+SCRIPT_DIR="$(dirname "$0")"
+if [ -f "$SCRIPT_DIR/claude-pod.py" ]; then
+    exec python3 "$SCRIPT_DIR/claude-pod.py" "$@"
+else
+    # Fallback to data dir when installed via 'claude-pod install'
+    exec python3 "${HOME}/.local/share/claude-pod/claude-pod.py" "$@"
+fi
