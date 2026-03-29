@@ -40,7 +40,8 @@ def _load_toml(path: Path) -> dict:
     if path.is_file():
         try:
             return tomllib.loads(path.read_text())
-        except Exception:
+        except Exception as exc:
+            print(f"warning: failed to load config '{path}': {exc}", file=sys.stderr)
             return {}
     return {}
 
@@ -139,8 +140,8 @@ def suggest_podman_install() -> None:
         if sys.stdin.isatty() and sys.stderr.isatty():
             answer = input("Install now? [y/N] ")
             if answer.strip().lower() == "y":
-                ret = os.system(install_cmd)
-                if ret != 0:
+                ret = subprocess.run(install_cmd, shell=True)
+                if ret.returncode != 0:
                     die("Podman installation failed.")
                 if not shutil.which("podman"):
                     die("Podman was installed but is not in PATH. Try opening a new shell.")
@@ -322,7 +323,9 @@ def cmd_build(_args: argparse.Namespace) -> None:
     ]
     if is_macos():
         build_args.extend(["--build-arg", "INSTALL_CLAUDE=1"])
-    subprocess.run(["podman", "build", "-t", IMAGE] + build_args + [build_dir], check=True)
+    result = subprocess.run(["podman", "build", "-t", IMAGE] + build_args + [build_dir])
+    if result.returncode != 0:
+        die(f"podman build failed with exit code {result.returncode}")
 
 
 def cmd_run(args: argparse.Namespace) -> None:
@@ -493,20 +496,26 @@ def cmd_exec(args: argparse.Namespace) -> None:
          "--format", "{{.Names}}"],
         capture_output=True, text=True,
     )
+    if result.returncode != 0:
+        err = (result.stderr or "").strip()
+        die(f"'podman ps' failed (exit code {result.returncode}): {err}" if err
+            else f"'podman ps' failed with exit code {result.returncode}.")
     containers = result.stdout.strip().splitlines()
     if not containers:
         die("No running claude-pod container found.")
     container = containers[0]
-    subprocess.run(["podman", "exec", "-it", container] + args.command)
+    ret = subprocess.run(["podman", "exec", "-it", container] + args.command)
+    sys.exit(ret.returncode)
 
 
 def cmd_ps(_args: argparse.Namespace) -> None:
     require_podman()
     ensure_podman_machine()
-    subprocess.run([
+    result = subprocess.run([
         "podman", "ps", "--filter", f"name={CONTAINER_NAME_PREFIX}",
         "--format", "table {{.Names}}\t{{.Status}}\t{{.Ports}}",
     ])
+    sys.exit(result.returncode)
 
 
 def cmd_clean(_args: argparse.Namespace) -> None:
@@ -648,7 +657,7 @@ def build_parser() -> argparse.ArgumentParser:
     list_parser.set_defaults(func=cmd_ps)
 
     # clean
-    clean_parser = subparsers.add_parser("clean", help="Remove volumes and image")
+    clean_parser = subparsers.add_parser("clean", help="Remove container image")
     clean_parser.set_defaults(func=cmd_clean)
 
     # install
