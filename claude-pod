@@ -308,12 +308,13 @@ cmd_build() {
 }
 
 # Parse shared flags used by both cmd_run and cmd_shell.
-# Caller must declare: env_vars, gpu, host_loopback, max_memory, network, ports, writable_dirs.
+# Caller must declare: dry_run, env_vars, gpu, host_loopback, max_memory, network, ports, writable_dirs.
 # Remaining (unconsumed) args are left in _parse_remaining.
 parse_shared_flags() {
     _parse_remaining=()
     while [[ $# -gt 0 ]]; do
         case "$1" in
+            --dry-run)       dry_run=true; shift ;;
             -e|--env)
                 [[ $# -lt 2 ]] && die "Flag --env requires a value (e.g. MY_VAR=val)"
                 env_vars+=("$2"); shift 2 ;;
@@ -348,13 +349,10 @@ parse_shared_flags() {
 }
 
 cmd_run() {
-    require_podman
-    ensure_podman_machine
-    require_image
-
     load_project_config "$(pwd)"
 
     local detach=false
+    local dry_run=false
     local gpu=false
     local host_loopback=false
     local keep_groups=false
@@ -386,6 +384,7 @@ cmd_run() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --detach)        detach=true; shift ;;
+            --dry-run)       dry_run=true; shift ;;
             --keep-groups)   keep_groups=true; shift ;;
             --no-yolo)       no_yolo=true; shift ;;
             --notify)
@@ -500,16 +499,22 @@ cmd_run() {
     else
         args+=(-i)   # stdin only, no TTY (piped input)
     fi
+
+    if $dry_run; then
+        echo "podman run ${args[*]} $IMAGE ${claude_args[*]}"
+        return
+    fi
+
+    require_podman
+    ensure_podman_machine
+    require_image
     podman run "${args[@]}" "$IMAGE" "${claude_args[@]}"
 }
 
 cmd_shell() {
-    require_podman
-    ensure_podman_machine
-    require_image
-
     load_project_config "$(pwd)"
 
+    local dry_run=false
     local gpu=false
     local host_loopback=false
     local max_memory=""
@@ -572,6 +577,14 @@ cmd_shell() {
         shell_args+=(-v "${dir}:${dir}")
     done
 
+    if $dry_run; then
+        echo "podman run ${shell_args[*]} -e CLAUDE_POD_SHELL=1 $IMAGE"
+        return
+    fi
+
+    require_podman
+    ensure_podman_machine
+    require_image
     podman run "${shell_args[@]}" -e CLAUDE_POD_SHELL=1 "$IMAGE"
 }
 
@@ -687,6 +700,7 @@ Commands:
   clean                Remove volumes and image
 
 Shared flags (run + shell):
+  --dry-run              Print the podman command instead of executing it
   -e, --env <VAR[=VAL]>  Pass environment variable to container (repeatable)
   --gpu                Enable GPU passthrough (nvidia)
   --host-loopback      Expose host loopback to container (host reachable at 10.0.2.2)
