@@ -204,6 +204,95 @@ assert_contains "entrypoint: CLAUDE_POD_SHELL check" "$ep" "CLAUDE_POD_SHELL"
 assert_contains "entrypoint: NOTIFY_CMD support" "$ep" "NOTIFY_CMD"
 assert_contains "entrypoint: CLAUDE_POD_NO_YOLO support" "$ep" "CLAUDE_POD_NO_YOLO"
 
+# --- Project config tests ---
+echo ""
+echo "=== Project config tests ==="
+(
+    source_helpers
+
+    # Create temp dirs for config testing
+    proj_dir=$(mktemp -d)
+    global_dir=$(mktemp -d)
+    trap 'rm -rf "$proj_dir" "$global_dir"' EXIT
+
+    global_cfg="$global_dir/config.toml"
+    proj_cfg="$proj_dir/.claude-pod.toml"
+
+    # --- load_project_config ---
+    load_project_config "$proj_dir"
+    assert_eq "load_project_config: no file = empty" "" "$PROJECT_CONFIG"
+
+    cat > "$proj_cfg" <<'TOML'
+[defaults]
+writable_dirs = ["/proj/a", "/proj/b"]
+extra_env = ["PROJ_VAR=1"]
+TOML
+    load_project_config "$proj_dir"
+    assert_eq "load_project_config: sets PROJECT_CONFIG" "$proj_cfg" "$PROJECT_CONFIG"
+
+    # --- cfg_get with explicit file arg ---
+    cat > "$global_cfg" <<'TOML'
+[defaults]
+notify_command = "echo global"
+TOML
+    out=$(cfg_get "defaults" "notify_command" "$global_cfg")
+    assert_eq "cfg_get: reads explicit file" "echo global" "$out"
+
+    # --- cfg_get_array with explicit file arg ---
+    out=$(cfg_get_array "defaults" "writable_dirs" "$proj_cfg" | tr '\n' ',')
+    assert_eq "cfg_get_array: reads project file" "/proj/a,/proj/b," "$out"
+
+    # --- cfg_get_merged: project wins over global ---
+    CONFIG_FILE="$global_cfg"
+    cat > "$proj_cfg" <<'TOML'
+[defaults]
+notify_command = "echo project"
+TOML
+    PROJECT_CONFIG="$proj_cfg"
+    out=$(cfg_get_merged "defaults" "notify_command")
+    assert_eq "cfg_get_merged: project wins" "echo project" "$out"
+
+    # --- cfg_get_merged: falls back to global ---
+    PROJECT_CONFIG="$proj_cfg"
+    out=$(cfg_get_merged "defaults" "nonexistent_key")
+    assert_eq "cfg_get_merged: falls back to global for missing key" "" "$out"
+
+    cat >> "$global_cfg" <<'TOML'
+fallback_key = "global_val"
+TOML
+    out=$(cfg_get_merged "defaults" "fallback_key")
+    assert_eq "cfg_get_merged: global fallback works" "global_val" "$out"
+
+    # --- cfg_get_array_merged: appends project to global ---
+    cat > "$global_cfg" <<'TOML'
+[defaults]
+writable_dirs = ["/global/x"]
+extra_env = ["GLOBAL=1"]
+TOML
+    cat > "$proj_cfg" <<'TOML'
+[defaults]
+writable_dirs = ["/proj/a", "/proj/b"]
+extra_env = ["PROJ=2"]
+TOML
+    CONFIG_FILE="$global_cfg"
+    PROJECT_CONFIG="$proj_cfg"
+    out=$(cfg_get_array_merged "defaults" "writable_dirs" | tr '\n' ',')
+    assert_eq "cfg_get_array_merged: merges writable_dirs" "/global/x,/proj/a,/proj/b," "$out"
+    out=$(cfg_get_array_merged "defaults" "extra_env" | tr '\n' ',')
+    assert_eq "cfg_get_array_merged: merges extra_env" "GLOBAL=1,PROJ=2," "$out"
+
+    # --- cfg_get_array_merged: no project config = global only ---
+    PROJECT_CONFIG=""
+    out=$(cfg_get_array_merged "defaults" "writable_dirs" | tr '\n' ',')
+    assert_eq "cfg_get_array_merged: global only when no project" "/global/x," "$out"
+
+    # --- cfg_get_array_merged: no global config = project only ---
+    CONFIG_FILE="/nonexistent"
+    PROJECT_CONFIG="$proj_cfg"
+    out=$(cfg_get_array_merged "defaults" "writable_dirs" | tr '\n' ',')
+    assert_eq "cfg_get_array_merged: project only when no global" "/proj/a,/proj/b," "$out"
+)
+
 # --- Structure tests ---
 echo ""
 echo "=== Structure tests ==="
@@ -213,7 +302,7 @@ for fn in die require_image require_podman suggest_podman_install mount_home_ite
           cwd_needs_mount resolve_dirs has_local_build_files build_base_args \
           portable_realpath is_macos ensure_podman_machine parse_shared_flags \
           cmd_build cmd_run cmd_shell cmd_exec cmd_ps cmd_clean cmd_install \
-          cfg_get cfg_get_array; do
+          cfg_get cfg_get_array cfg_get_merged cfg_get_array_merged load_project_config; do
     grep -q "^${fn}()" "$CP" && pass "function $fn defined" || fail "function $fn defined" "not found"
 done
 
@@ -223,7 +312,7 @@ for cmd in install build run shell exec ps clean; do
 done
 
 # Key variables
-for var in VERSION IMAGE CONFIG_FILE CONTAINER_NAME_PREFIX DATA_DIR HOST_OS; do
+for var in VERSION IMAGE CONFIG_FILE PROJECT_CONFIG CONTAINER_NAME_PREFIX DATA_DIR HOST_OS; do
     grep -q "^${var}=" "$CP" && pass "variable $var defined" || fail "variable $var defined" "not found"
 done
 
