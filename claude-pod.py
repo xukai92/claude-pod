@@ -211,21 +211,24 @@ def _home_items() -> list[Path]:
     items: list[Path] = []
     seen: set[str] = set()
 
-    # .[!.]* — dotfiles except . and ..
-    for item in sorted(HOME.iterdir()):
+    # .[!.]* — single-dot prefixed (excludes ..* per bash semantics)
+    for item in sorted(HOME.glob(".[!.]*")):
         name = item.name
-        if name.startswith(".") and name not in (".", ".."):
-            if name not in seen:
-                seen.add(name)
-                items.append(item)
+        if name not in seen:
+            seen.add(name)
+            items.append(item)
 
     # ..?* — items starting with .. followed by at least one char
-    # (already covered by the above in Python since iterdir gives all entries)
+    for item in sorted(HOME.glob("..?*")):
+        name = item.name
+        if name not in seen:
+            seen.add(name)
+            items.append(item)
 
     # * — non-dot items
-    for item in sorted(HOME.iterdir()):
+    for item in sorted(HOME.glob("*")):
         name = item.name
-        if not name.startswith(".") and name not in seen:
+        if name not in seen:
             seen.add(name)
             items.append(item)
 
