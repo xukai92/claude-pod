@@ -62,17 +62,26 @@ cfg_get_array() {
     fi
 }
 
+cfg_has_key() {
+    # Check if a key exists in a config file (returns 0 if found).
+    local section="$1" key="$2" file="${3:-$CONFIG_FILE}"
+    [[ -f "$file" ]] && awk -v section="[$section]" -v key="$key" '
+        $0 == section { in_section=1; next }
+        /^\[/ { in_section=0 }
+        in_section && $1 == key { found=1; exit }
+        END { exit !found }
+    ' "$file"
+}
+
 cfg_get_merged() {
     # Get a scalar from project config (wins) or global config.
+    # Project config wins even if value is empty (allows overriding to blank).
     local section="$1" key="$2"
-    local val=""
-    if [[ -n "$PROJECT_CONFIG" ]]; then
-        val=$(cfg_get "$section" "$key" "$PROJECT_CONFIG")
+    if [[ -n "$PROJECT_CONFIG" ]] && cfg_has_key "$section" "$key" "$PROJECT_CONFIG"; then
+        cfg_get "$section" "$key" "$PROJECT_CONFIG"
+        return
     fi
-    if [[ -z "$val" ]]; then
-        val=$(cfg_get "$section" "$key" "$CONFIG_FILE")
-    fi
-    echo "$val"
+    cfg_get "$section" "$key" "$CONFIG_FILE"
 }
 
 cfg_get_array_merged() {
@@ -409,6 +418,12 @@ cmd_run() {
     local cwd
     cwd="$(pwd)"
 
+    # Merge writable dirs from config before build_base_args so mount_home_items
+    # sees them and can mark matching $HOME entries as rw.
+    while IFS= read -r dir; do
+        [[ -n "$dir" ]] && writable_dirs+=("$dir")
+    done < <(cfg_get_array_merged "defaults" "writable_dirs")
+
     local args=(--name "${CONTAINER_NAME_PREFIX}-$(date +%s)")
     build_base_args args "$cwd" "${writable_dirs[*]:-}"
 
@@ -467,11 +482,6 @@ cmd_run() {
         [[ -n "$var" ]] && args+=(-e "$var")
     done < <(cfg_get_array_merged "defaults" "extra_env")
 
-    # Writable dirs from config (global + project)
-    while IFS= read -r dir; do
-        [[ -n "$dir" ]] && writable_dirs+=("$dir")
-    done < <(cfg_get_array_merged "defaults" "writable_dirs")
-
     # Extra writable dirs (top-level $HOME entries handled by mount_home_items)
     for dir in "${writable_dirs[@]}"; do
         [[ "$dir" == "$HOME" ]] && continue
@@ -517,6 +527,12 @@ cmd_shell() {
     local cwd
     cwd="$(pwd)"
 
+    # Merge writable dirs from config before build_base_args so mount_home_items
+    # sees them and can mark matching $HOME entries as rw.
+    while IFS= read -r dir; do
+        [[ -n "$dir" ]] && writable_dirs+=("$dir")
+    done < <(cfg_get_array_merged "defaults" "writable_dirs")
+
     local shell_args=(-it)
     build_base_args shell_args "$cwd" "${writable_dirs[*]:-}"
 
@@ -549,11 +565,6 @@ cmd_shell() {
     while IFS= read -r var; do
         [[ -n "$var" ]] && shell_args+=(-e "$var")
     done < <(cfg_get_array_merged "defaults" "extra_env")
-
-    # Writable dirs from config (global + project)
-    while IFS= read -r dir; do
-        [[ -n "$dir" ]] && writable_dirs+=("$dir")
-    done < <(cfg_get_array_merged "defaults" "writable_dirs")
 
     # Extra writable dirs
     for dir in "${writable_dirs[@]}"; do

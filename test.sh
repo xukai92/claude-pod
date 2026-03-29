@@ -286,7 +286,31 @@ TOML
     out=$(cfg_get_array_merged "defaults" "writable_dirs" | tr '\n' ',')
     assert_eq "cfg_get_array_merged: global only when no project" "/global/x," "$out"
 
+    # --- cfg_get_merged: project can override to empty ---
+    cat > "$proj_cfg" <<'TOML'
+[defaults]
+notify_command = ""
+TOML
+    PROJECT_CONFIG="$proj_cfg"
+    cat > "$global_cfg" <<'TOML'
+[defaults]
+notify_command = "echo global"
+TOML
+    CONFIG_FILE="$global_cfg"
+    out=$(cfg_get_merged "defaults" "notify_command")
+    assert_eq "cfg_get_merged: project overrides to empty" "" "$out"
+
+    # --- cfg_has_key ---
+    cfg_has_key "defaults" "notify_command" "$global_cfg" && pass "cfg_has_key: finds existing key" \
+        || fail "cfg_has_key: finds existing key" "returned false"
+    cfg_has_key "defaults" "no_such_key" "$global_cfg" && fail "cfg_has_key: missing key" "returned true" \
+        || pass "cfg_has_key: missing key returns false"
+
     # --- cfg_get_array_merged: no global config = project only ---
+    cat > "$proj_cfg" <<'TOML'
+[defaults]
+writable_dirs = ["/proj/a", "/proj/b"]
+TOML
     CONFIG_FILE="/nonexistent"
     PROJECT_CONFIG="$proj_cfg"
     out=$(cfg_get_array_merged "defaults" "writable_dirs" | tr '\n' ',')
@@ -302,7 +326,7 @@ for fn in die require_image require_podman suggest_podman_install mount_home_ite
           cwd_needs_mount resolve_dirs has_local_build_files build_base_args \
           portable_realpath is_macos ensure_podman_machine parse_shared_flags \
           cmd_build cmd_run cmd_shell cmd_exec cmd_ps cmd_clean cmd_install \
-          cfg_get cfg_get_array cfg_get_merged cfg_get_array_merged load_project_config; do
+          cfg_get cfg_get_array cfg_has_key cfg_get_merged cfg_get_array_merged load_project_config; do
     grep -q "^${fn}()" "$CP" && pass "function $fn defined" || fail "function $fn defined" "not found"
 done
 
