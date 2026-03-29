@@ -306,6 +306,16 @@ TOML
     cfg_has_key "defaults" "no_such_key" "$global_cfg" && fail "cfg_has_key: missing key" "returned true" \
         || pass "cfg_has_key: missing key returns false"
 
+    # cfg_has_key with no-space format (key="value")
+    nospace_cfg=$(mktemp)
+    cat > "$nospace_cfg" <<'TOML'
+[defaults]
+notify_command="echo compact"
+TOML
+    cfg_has_key "defaults" "notify_command" "$nospace_cfg" && pass "cfg_has_key: no-space key=value" \
+        || fail "cfg_has_key: no-space key=value" "returned false"
+    rm -f "$nospace_cfg"
+
     # --- cfg_get_array_merged: no global config = project only ---
     cat > "$proj_cfg" <<'TOML'
 [defaults]
