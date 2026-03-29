@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shlex
 import platform
 import pwd
 import re
@@ -43,7 +44,8 @@ def _load_toml(path: Path) -> dict:
     result: dict = {}
     if path.is_file():
         try:
-            result = tomllib.loads(path.read_text())
+            with path.open("rb") as f:
+                result = tomllib.load(f)
         except Exception as exc:
             print(f"warning: failed to load config '{path}': {exc}", file=sys.stderr)
     _toml_cache[path] = result
@@ -427,7 +429,7 @@ def cmd_run(args: argparse.Namespace) -> None:
 
     if args.dry_run:
         parts = ["podman", "run"] + podman_args + [IMAGE] + claude_args
-        print(" ".join(parts))
+        print(shlex.join(parts))
         return
 
     require_podman()
@@ -481,7 +483,7 @@ def cmd_shell(args: argparse.Namespace) -> None:
 
     if args.dry_run:
         parts = ["podman", "run"] + shell_args + ["-e", "CLAUDE_POD_SHELL=1", IMAGE]
-        print(" ".join(parts))
+        print(shlex.join(parts))
         return
 
     require_podman()
