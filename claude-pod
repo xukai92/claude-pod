@@ -4,7 +4,27 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
 # Bootstrap: when piped from curl (bash -s -- install), claude-pod.py won't
 # exist alongside this script. Download everything and hand off to Python.
 if [ "$1" = "install" ] && ! [ -f "$SCRIPT_DIR/claude-pod.py" ] && ! [ -f "${HOME}/.local/share/claude-pod/claude-pod.py" ]; then
-    REF="${2:-main}"
+    # Parse --ref flag (default: main)
+    REF="main"
+    shift # consume "install"
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --ref) REF="$2"; shift 2 ;;
+            --ref=*) REF="${1#--ref=}"; shift ;;
+            *) shift ;;
+        esac
+    done
+
+    # Check required commands
+    if ! command -v curl >/dev/null 2>&1; then
+        echo "claude-pod: curl is required for remote install" >&2
+        exit 1
+    fi
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "claude-pod: python3 is required" >&2
+        exit 1
+    fi
+
     DATA_DIR="${HOME}/.local/share/claude-pod"
     LOCAL_BIN="${HOME}/.local/bin"
     GITHUB_RAW="https://raw.githubusercontent.com/xukai92/claude-pod/${REF}"
@@ -17,7 +37,9 @@ if [ "$1" = "install" ] && ! [ -f "$SCRIPT_DIR/claude-pod.py" ] && ! [ -f "${HOM
             echo "claude-pod: failed to download ${f}" >&2
             exit 1
         fi
-        chmod +x "${DATA_DIR}/${f}"
+        if [ "$f" != "Containerfile" ]; then
+            chmod +x "${DATA_DIR}/${f}"
+        fi
     done
 
     ln -sf "${DATA_DIR}/claude-pod" "${LOCAL_BIN}/claude-pod"
