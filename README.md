@@ -46,6 +46,7 @@ claude-pod shell                    # drop into a shell in the container
 
 | Flag | Description |
 |------|-------------|
+| `--dry-run` | Print the podman command instead of executing it |
 | `-e, --env <VAR[=VAL]>` | Pass environment variable to container (repeatable) |
 | `--gpu` | Enable GPU passthrough (nvidia) |
 | `--host-loopback` | Expose host loopback to container (host reachable at 10.0.2.2) |
