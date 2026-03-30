@@ -561,6 +561,8 @@ def cmd_install(args: argparse.Namespace) -> None:
                 src = script_path / f
                 if src.is_file():
                     shutil.copy2(str(src), str(data_dir / f))
+                    if f != "Containerfile":
+                        (data_dir / f).chmod(0o755)
     else:
         if not shutil.which("curl"):
             die("curl is required for remote install.")
@@ -581,6 +583,9 @@ def cmd_install(args: argparse.Namespace) -> None:
             for fname in download_files:
                 (data_dir / fname).unlink(missing_ok=True)
             die("Download failed.")
+        for fname in download_files:
+            if fname != "Containerfile":
+                (data_dir / fname).chmod(0o755)
 
     # Install both the wrapper and the Python script
     for f in ("claude-pod", "claude-pod.py"):
