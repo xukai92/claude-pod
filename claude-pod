@@ -1,5 +1,60 @@
 #!/bin/sh
-SCRIPT_DIR="$(dirname "$0")"
+SCRIPT_DIR="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
+
+# Bootstrap: when piped from curl (bash -s -- install), claude-pod.py won't
+# exist alongside this script. Download everything and hand off to Python.
+if [ "$1" = "install" ] && ! [ -f "$SCRIPT_DIR/claude-pod.py" ] && ! [ -f "${HOME}/.local/share/claude-pod/claude-pod.py" ]; then
+    # Parse --ref flag (default: main)
+    REF="main"
+    shift # consume "install"
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --ref) REF="$2"; shift 2 ;;
+            --ref=*) REF="${1#--ref=}"; shift ;;
+            *) shift ;;
+        esac
+    done
+
+    # Check required commands
+    if ! command -v curl >/dev/null 2>&1; then
+        echo "claude-pod: curl is required for remote install" >&2
+        exit 1
+    fi
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "claude-pod: python3 is required" >&2
+        exit 1
+    fi
+
+    DATA_DIR="${HOME}/.local/share/claude-pod"
+    LOCAL_BIN="${HOME}/.local/bin"
+    GITHUB_RAW="https://raw.githubusercontent.com/xukai92/claude-pod/${REF}"
+
+    mkdir -p "$DATA_DIR" "$LOCAL_BIN"
+
+    echo "Downloading claude-pod from GitHub (ref: ${REF})..."
+    for f in claude-pod claude-pod.py entrypoint.sh Containerfile; do
+        if ! curl -fsSL --show-error "${GITHUB_RAW}/${f}" -o "${DATA_DIR}/${f}"; then
+            echo "claude-pod: failed to download ${f}" >&2
+            exit 1
+        fi
+        if [ "$f" != "Containerfile" ]; then
+            chmod +x "${DATA_DIR}/${f}"
+        fi
+    done
+
+    ln -sf "${DATA_DIR}/claude-pod" "${LOCAL_BIN}/claude-pod"
+    chmod +x "${LOCAL_BIN}/claude-pod"
+    echo "Installed claude-pod to ~/.local/bin/claude-pod"
+
+    case ":${PATH}:" in
+        *":${LOCAL_BIN}:"*) ;;
+        *) echo "warning: ~/.local/bin is not in your PATH. Add it to your shell profile." >&2 ;;
+    esac
+
+    # Build the image via Python
+    exec python3 "${DATA_DIR}/claude-pod.py" install --ref "$REF"
+fi
+
 if [ -f "$SCRIPT_DIR/claude-pod.py" ]; then
     exec python3 "$SCRIPT_DIR/claude-pod.py" "$@"
 elif [ -f "${HOME}/.local/share/claude-pod/claude-pod.py" ]; then
