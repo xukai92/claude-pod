@@ -297,9 +297,10 @@ def build_base_args(
     if not is_macos() and homebrew and Path(homebrew).is_dir():
         args.extend(["-v", f"{homebrew}:{homebrew}:ro"])
 
-    for font_dir in ("/usr/share/fonts", "/etc/fonts"):
-        if Path(font_dir).is_dir():
-            args.extend(["-v", f"{font_dir}:{font_dir}:ro"])
+    if not is_macos():
+        for font_dir in ("/usr/share/fonts", "/etc/fonts"):
+            if Path(font_dir).is_dir():
+                args.extend(["-v", f"{font_dir}:{font_dir}:ro"])
 
 
 # --- Subcommands ---
