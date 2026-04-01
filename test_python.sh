@@ -59,7 +59,7 @@ assert_contains "run --help shows --env" "$out" "--env"
 assert_contains "run --help shows --writable-dir" "$out" "--writable-dir"
 assert_contains "run --help shows --keep-groups" "$out" "--keep-groups"
 assert_contains "run --help shows --notify" "$out" "--notify"
-assert_contains "run --help shows --host-loopback" "$out" "--host-loopback"
+assert_contains "run --help shows --host-network" "$out" "--host-network"
 
 out=$($PY shell --help 2>&1 || true)
 assert_contains "shell --help shows --dry-run" "$out" "--dry-run"
@@ -84,7 +84,7 @@ declare -A FIXTURE_CMDS=(
     [run_no_yolo]="run --dry-run --no-yolo"
     [run_max_memory]="run --dry-run --max-memory 4g"
     [run_network_host]="run --dry-run --network host"
-    [run_host_loopback]="run --dry-run --host-loopback"
+    [run_host_network]="run --dry-run --host-network"
     [run_detach]="run --dry-run --detach"
     [run_keep_groups]="run --dry-run --keep-groups"
     [run_port]="run --dry-run -p 3000:3000"

@@ -9,7 +9,7 @@ fi
 
 set -euo pipefail
 
-VERSION="0.8.0"
+VERSION="0.8.1"
 IMAGE="claude-pod:latest"
 CONFIG_FILE="${HOME}/.config/claude-pod/config.toml"
 PROJECT_CONFIG=""  # set to CWD/.claude-pod.toml if it exists
@@ -308,7 +308,7 @@ cmd_build() {
 }
 
 # Parse shared flags used by both cmd_run and cmd_shell.
-# Caller must declare: dry_run, env_vars, gpu, host_loopback, max_memory, network, ports, writable_dirs.
+# Caller must declare: dry_run, env_vars, gpu, host_network, max_memory, network, ports, writable_dirs.
 # Remaining (unconsumed) args are left in _parse_remaining.
 parse_shared_flags() {
     _parse_remaining=()
@@ -319,7 +319,7 @@ parse_shared_flags() {
                 [[ $# -lt 2 ]] && die "Flag --env requires a value (e.g. MY_VAR=val)"
                 env_vars+=("$2"); shift 2 ;;
             --gpu)           gpu=true; shift ;;
-            --host-loopback) host_loopback=true; shift ;;
+            --host-network) host_network=true; shift ;;
             --max-memory)
                 [[ $# -lt 2 ]] && die "Flag --max-memory requires a value (e.g. 4g)"
                 max_memory="$2"; shift 2 ;;
@@ -354,7 +354,7 @@ cmd_run() {
     local detach=false
     local dry_run=false
     local gpu=false
-    local host_loopback=false
+    local host_network=false
     local keep_groups=false
     local no_yolo=false
     local max_memory=""
@@ -452,11 +452,11 @@ cmd_run() {
         args+=(-e CLAUDE_POD_NO_YOLO=1)
     fi
 
-    if $host_loopback && [[ -n "$network" ]]; then
-        die "--host-loopback and --network are mutually exclusive"
+    if $host_network && [[ -n "$network" ]]; then
+        die "--host-network and --network are mutually exclusive"
     fi
-    if $host_loopback; then
-        args+=(--network=slirp4netns:allow_host_loopback=true)
+    if $host_network; then
+        args+=(--network=host)
     elif [[ -n "$network" ]]; then
         args+=(--network="$network")
     fi
@@ -516,7 +516,7 @@ cmd_shell() {
 
     local dry_run=false
     local gpu=false
-    local host_loopback=false
+    local host_network=false
     local max_memory=""
     local network=""
     local env_vars=()
@@ -549,11 +549,11 @@ cmd_shell() {
         shell_args+=(--device "nvidia.com/gpu=all")
     fi
 
-    if $host_loopback && [[ -n "$network" ]]; then
-        die "--host-loopback and --network are mutually exclusive"
+    if $host_network && [[ -n "$network" ]]; then
+        die "--host-network and --network are mutually exclusive"
     fi
-    if $host_loopback; then
-        shell_args+=(--network=slirp4netns:allow_host_loopback=true)
+    if $host_network; then
+        shell_args+=(--network=host)
     elif [[ -n "$network" ]]; then
         shell_args+=(--network="$network")
     fi
@@ -703,7 +703,7 @@ Shared flags (run + shell):
   --dry-run              Print the podman command instead of executing it
   -e, --env <VAR[=VAL]>  Pass environment variable to container (repeatable)
   --gpu                Enable GPU passthrough (nvidia)
-  --host-loopback      Expose host loopback to container (host reachable at 10.0.2.2)
+  --host-network       Use host networking (shorthand for --network=host)
   --max-memory <size>  Set container memory limit (e.g. 4g, 512m)
   --network=<mode>     Podman network mode (e.g. none, host)
   -p, --port <port>    Expose a port (e.g. 3000:3000, repeatable)
