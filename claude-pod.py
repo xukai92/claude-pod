@@ -20,7 +20,7 @@ try:
 except ImportError:
     sys.exit("error: Python 3.11+ is required (for tomllib)")
 
-VERSION = "0.8.1"
+VERSION = "0.8.2"
 IMAGE = "claude-pod:latest"
 CONTAINER_NAME_PREFIX = "claude-pod"
 HOST_OS = platform.system()
