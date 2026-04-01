@@ -49,7 +49,7 @@ claude-pod shell                    # drop into a shell in the container
 | `--dry-run` | Print the podman command instead of executing it |
 | `-e, --env <VAR[=VAL]>` | Pass environment variable to container (repeatable) |
 | `--gpu` | Enable GPU passthrough (nvidia) |
-| `--host-loopback` | Expose host loopback to container (host reachable at 10.0.2.2) |
+| `--host-network` | Use host networking (shorthand for `--network=host`) |
 | `--max-memory <size>` | Container memory limit (e.g. `4g`, `512m`) |
 | `--network=<mode>` | Podman network mode (e.g. `none`, `host`) |
 | `-p, --port <port>` | Expose a port (e.g. `3000:3000`, repeatable) |
