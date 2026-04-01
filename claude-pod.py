@@ -20,7 +20,7 @@ try:
 except ImportError:
     sys.exit("error: Python 3.11+ is required (for tomllib)")
 
-VERSION = "0.8.0"
+VERSION = "0.8.1"
 IMAGE = "claude-pod:latest"
 CONTAINER_NAME_PREFIX = "claude-pod"
 HOST_OS = platform.system()
@@ -392,10 +392,10 @@ def cmd_run(args: argparse.Namespace) -> None:
     if args.no_yolo:
         podman_args.extend(["-e", "CLAUDE_POD_NO_YOLO=1"])
 
-    if args.host_loopback and args.network:
-        die("--host-loopback and --network are mutually exclusive")
-    if args.host_loopback:
-        podman_args.append("--network=slirp4netns:allow_host_loopback=true")
+    if args.host_network and args.network:
+        die("--host-network and --network are mutually exclusive")
+    if args.host_network:
+        podman_args.append("--network=host")
     elif args.network:
         podman_args.append(f"--network={args.network}")
 
@@ -463,10 +463,10 @@ def cmd_shell(args: argparse.Namespace) -> None:
     if args.gpu:
         shell_args.extend(["--device", "nvidia.com/gpu=all"])
 
-    if args.host_loopback and args.network:
-        die("--host-loopback and --network are mutually exclusive")
-    if args.host_loopback:
-        shell_args.append("--network=slirp4netns:allow_host_loopback=true")
+    if args.host_network and args.network:
+        die("--host-network and --network are mutually exclusive")
+    if args.host_network:
+        shell_args.append("--network=host")
     elif args.network:
         shell_args.append(f"--network={args.network}")
 
@@ -626,7 +626,7 @@ def add_shared_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-e", "--env", dest="env_vars", action="append", metavar="VAR[=VAL]",
                         help="Pass environment variable to container (repeatable)")
     parser.add_argument("--gpu", action="store_true", help="Enable GPU passthrough (nvidia)")
-    parser.add_argument("--host-loopback", action="store_true", help="Expose host loopback to container")
+    parser.add_argument("--host-network", action="store_true", help="Use host networking (shorthand for --network=host)")
     parser.add_argument("--max-memory", metavar="SIZE", help="Set container memory limit (e.g. 4g)")
     parser.add_argument("--network", help="Podman network mode (e.g. none, host)")
     parser.add_argument("-p", "--port", dest="ports", action="append", metavar="PORT",

@@ -82,7 +82,7 @@ assert_contains "--help shows --port" "$out" "--port"
 assert_contains "--help shows --writable-dir" "$out" "--writable-dir"
 assert_contains "--help shows --detach" "$out" "--detach"
 assert_contains "--help shows --network" "$out" "--network"
-assert_contains "--help shows --host-loopback" "$out" "--host-loopback"
+assert_contains "--help shows --host-network" "$out" "--host-network"
 assert_contains "--help shows --notify" "$out" "--notify"
 assert_contains "--help shows --env" "$out" "--env"
 assert_contains "--help shows --gpu" "$out" "--gpu"
@@ -159,13 +159,13 @@ echo "=== Helper function tests ==="
     assert_eq "portable_realpath: preserves PWD" "$cwd_before" "$(pwd)"
 
     # parse_shared_flags: typical case with all flag types
-    env_vars=(); gpu=false; host_loopback=false; max_memory=""; network=""
+    env_vars=(); gpu=false; host_network=false; max_memory=""; network=""
     ports=(); writable_dirs=(); _parse_remaining=()
-    parse_shared_flags -e FOO=bar --gpu --host-loopback --max-memory 4g \
+    parse_shared_flags -e FOO=bar --gpu --host-network --max-memory 4g \
         --network=host -p 3000:3000 --port=8080:80 -wd /tmp --unknown extra
     assert_eq "parse_shared_flags: env_vars" "FOO=bar" "${env_vars[0]}"
     assert_eq "parse_shared_flags: gpu" "true" "$gpu"
-    assert_eq "parse_shared_flags: host_loopback" "true" "$host_loopback"
+    assert_eq "parse_shared_flags: host_network" "true" "$host_network"
     assert_eq "parse_shared_flags: max_memory" "4g" "$max_memory"
     assert_eq "parse_shared_flags: network" "host" "$network"
     assert_eq "parse_shared_flags: ports count" "2" "${#ports[@]}"
@@ -176,7 +176,7 @@ echo "=== Helper function tests ==="
     assert_eq "parse_shared_flags: remaining 1" "extra" "${_parse_remaining[1]}"
 
     # parse_shared_flags: empty input leaves defaults
-    env_vars=(); gpu=false; host_loopback=false; max_memory=""; network=""
+    env_vars=(); gpu=false; host_network=false; max_memory=""; network=""
     ports=(); writable_dirs=(); _parse_remaining=()
     parse_shared_flags
     assert_eq "parse_shared_flags: empty env_vars" "0" "${#env_vars[@]}"
