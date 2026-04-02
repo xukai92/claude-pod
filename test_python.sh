@@ -24,7 +24,7 @@ assert_eq() {
 }
 
 normalize() {
-    sed 's/claude-pod-[0-9]\{5,\}/claude-pod-TIMESTAMP/g'
+    sed -e 's/claude-pod-[0-9]\{5,\}/claude-pod-TIMESTAMP/g' -e "s|$HOME|/HOME|g"
 }
 
 # --- CLI tests ---
