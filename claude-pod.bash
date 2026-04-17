@@ -9,7 +9,7 @@ fi
 
 set -euo pipefail
 
-VERSION="0.8.1"
+VERSION="0.9.0"
 IMAGE="claude-pod:latest"
 CONFIG_FILE="${HOME}/.config/claude-pod/config.toml"
 PROJECT_CONFIG=""  # set to CWD/.claude-pod.toml if it exists
@@ -218,7 +218,7 @@ mount_home_items() {
         case "$base" in
             .claude.json)
                 _args+=(-v "${item}:/mnt/.claude.json:ro") ;;
-            .claude|.config|.local)
+            .claude|.config|.local|.cache|.npm|.bun)
                 _args+=(-v "${item}:${item}") ;;
             *)
                 if [[ "$item" == "$cwd_top" || " $extra_rw " == *" $item "* ]]; then
@@ -272,6 +272,8 @@ build_base_args() {
     if ! is_macos && [[ -n "${HOMEBREW_PREFIX:-}" && -d "$HOMEBREW_PREFIX" ]]; then
         _base_args+=(-v "${HOMEBREW_PREFIX}:${HOMEBREW_PREFIX}:ro")
     fi
+    # Share /tmp for temp file exchange and package manager caches
+    _base_args+=(-v /tmp:/tmp)
 }
 
 # --- Subcommands ---
