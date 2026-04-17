@@ -209,7 +209,7 @@ def has_local_build_files() -> bool:
 _MACOS_SKIP = {".Trash", ".Trashes", "Library", ".local"}
 
 # Always rw directories
-_RW_DIRS = {".claude", ".config", ".local"}
+_RW_DIRS = {".claude", ".config", ".local", ".cache", ".npm", ".bun"}
 
 
 def _home_items() -> list[Path]:
@@ -301,6 +301,9 @@ def build_base_args(
         for font_dir in ("/usr/share/fonts", "/etc/fonts"):
             if Path(font_dir).is_dir():
                 args.extend(["-v", f"{font_dir}:{font_dir}:ro"])
+
+    # Share /tmp for temp file exchange and package manager caches
+    args.extend(["-v", "/tmp:/tmp"])
 
 
 # --- Subcommands ---
