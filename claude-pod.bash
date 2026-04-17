@@ -9,7 +9,7 @@ fi
 
 set -euo pipefail
 
-VERSION="0.8.1"
+VERSION="0.9.0"
 IMAGE="claude-pod:latest"
 CONFIG_FILE="${HOME}/.config/claude-pod/config.toml"
 PROJECT_CONFIG=""  # set to CWD/.claude-pod.toml if it exists
