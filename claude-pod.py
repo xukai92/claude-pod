@@ -628,7 +628,8 @@ def add_shared_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--dry-run", action="store_true", help="Print the podman command instead of executing it")
     parser.add_argument("-e", "--env", dest="env_vars", action="append", metavar="VAR[=VAL]",
                         help="Pass environment variable to container (repeatable)")
-    parser.add_argument("--gpu", metavar="ID", help="GPU to passthrough via CDI (e.g. 0, 1, all)")
+    parser.add_argument("--gpu", nargs="?", const="all", metavar="ID",
+                        help="GPU to passthrough via CDI (e.g. 0, 1, all); defaults to all")
     parser.add_argument("--host-network", action="store_true", help="Use host networking (shorthand for --network=host)")
     parser.add_argument("--max-memory", metavar="SIZE", help="Set container memory limit (e.g. 4g)")
     parser.add_argument("--network", help="Podman network mode (e.g. none, host)")

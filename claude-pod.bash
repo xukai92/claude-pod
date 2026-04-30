@@ -321,8 +321,11 @@ parse_shared_flags() {
                 [[ $# -lt 2 ]] && die "Flag --env requires a value (e.g. MY_VAR=val)"
                 env_vars+=("$2"); shift 2 ;;
             --gpu)
-                [[ $# -lt 2 ]] && die "Flag --gpu requires a GPU ID (e.g. 0, 1, all)"
-                gpu="$2"; shift 2 ;;
+                if [[ $# -ge 2 && ! "$2" =~ ^- ]]; then
+                    gpu="$2"; shift 2
+                else
+                    gpu="all"; shift
+                fi ;;
             --host-network) host_network=true; shift ;;
             --max-memory)
                 [[ $# -lt 2 ]] && die "Flag --max-memory requires a value (e.g. 4g)"
@@ -706,7 +709,7 @@ Commands:
 Shared flags (run + shell):
   --dry-run              Print the podman command instead of executing it
   -e, --env <VAR[=VAL]>  Pass environment variable to container (repeatable)
-  --gpu <id>           GPU to passthrough via CDI (e.g. 0, 1, all)
+  --gpu [id]           GPU to passthrough via CDI (e.g. 0, 1, all; defaults to all)
   --host-network       Use host networking (shorthand for --network=host)
   --max-memory <size>  Set container memory limit (e.g. 4g, 512m)
   --network=<mode>     Podman network mode (e.g. none, host)
