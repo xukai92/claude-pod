@@ -196,6 +196,12 @@ echo "=== Helper function tests ==="
     assert_eq "parse_shared_flags: gpu before flag defaults to all" "all" "$gpu"
     assert_eq "parse_shared_flags: host_network after bare gpu" "true" "$host_network"
 
+    # parse_shared_flags: --gpu=<id> form
+    env_vars=(); gpu=""; host_network=false; max_memory=""; network=""
+    ports=(); writable_dirs=(); _parse_remaining=()
+    parse_shared_flags --gpu=0
+    assert_eq "parse_shared_flags: gpu=0 equals form" "0" "$gpu"
+
     # parse_shared_flags: --env missing value (should die/exit non-zero)
     out=$(bash -c "source <(sed '/^case/,\$d' '$CP'); parse_shared_flags --env" 2>&1 || true)
     assert_contains "parse_shared_flags: --env missing value errors" "$out" "error"

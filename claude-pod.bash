@@ -326,6 +326,10 @@ parse_shared_flags() {
                 else
                     gpu="all"; shift
                 fi ;;
+            --gpu=*)
+                gpu="${1#--gpu=}"
+                [[ -z "$gpu" ]] && die "Flag --gpu requires a value (e.g. 0 or all)"
+                shift ;;
             --host-network) host_network=true; shift ;;
             --max-memory)
                 [[ $# -lt 2 ]] && die "Flag --max-memory requires a value (e.g. 4g)"
