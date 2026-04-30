@@ -159,12 +159,12 @@ echo "=== Helper function tests ==="
     assert_eq "portable_realpath: preserves PWD" "$cwd_before" "$(pwd)"
 
     # parse_shared_flags: typical case with all flag types
-    env_vars=(); gpu=""; host_network=false; max_memory=""; network=""
+    env_vars=(); gpu=false; host_network=false; max_memory=""; network=""
     ports=(); writable_dirs=(); _parse_remaining=()
-    parse_shared_flags -e FOO=bar --gpu 0 --host-network --max-memory 4g \
+    parse_shared_flags -e FOO=bar --gpu --host-network --max-memory 4g \
         --network=host -p 3000:3000 --port=8080:80 -wd /tmp --unknown extra
     assert_eq "parse_shared_flags: env_vars" "FOO=bar" "${env_vars[0]}"
-    assert_eq "parse_shared_flags: gpu" "0" "$gpu"
+    assert_eq "parse_shared_flags: gpu" "true" "$gpu"
     assert_eq "parse_shared_flags: host_network" "true" "$host_network"
     assert_eq "parse_shared_flags: max_memory" "4g" "$max_memory"
     assert_eq "parse_shared_flags: network" "host" "$network"
@@ -176,31 +176,12 @@ echo "=== Helper function tests ==="
     assert_eq "parse_shared_flags: remaining 1" "extra" "${_parse_remaining[1]}"
 
     # parse_shared_flags: empty input leaves defaults
-    env_vars=(); gpu=""; host_network=false; max_memory=""; network=""
+    env_vars=(); gpu=false; host_network=false; max_memory=""; network=""
     ports=(); writable_dirs=(); _parse_remaining=()
     parse_shared_flags
     assert_eq "parse_shared_flags: empty env_vars" "0" "${#env_vars[@]}"
     assert_eq "parse_shared_flags: empty remaining" "0" "${#_parse_remaining[@]}"
-    assert_eq "parse_shared_flags: gpu default" "" "$gpu"
-
-    # parse_shared_flags: --gpu without value defaults to "all"
-    env_vars=(); gpu=""; host_network=false; max_memory=""; network=""
-    ports=(); writable_dirs=(); _parse_remaining=()
-    parse_shared_flags --gpu
-    assert_eq "parse_shared_flags: gpu bare defaults to all" "all" "$gpu"
-
-    # parse_shared_flags: --gpu followed by another flag defaults to "all"
-    env_vars=(); gpu=""; host_network=false; max_memory=""; network=""
-    ports=(); writable_dirs=(); _parse_remaining=()
-    parse_shared_flags --gpu --host-network
-    assert_eq "parse_shared_flags: gpu before flag defaults to all" "all" "$gpu"
-    assert_eq "parse_shared_flags: host_network after bare gpu" "true" "$host_network"
-
-    # parse_shared_flags: --gpu=<id> form
-    env_vars=(); gpu=""; host_network=false; max_memory=""; network=""
-    ports=(); writable_dirs=(); _parse_remaining=()
-    parse_shared_flags --gpu=0
-    assert_eq "parse_shared_flags: gpu=0 equals form" "0" "$gpu"
+    assert_eq "parse_shared_flags: gpu default" "false" "$gpu"
 
     # parse_shared_flags: --env missing value (should die/exit non-zero)
     out=$(bash -c "source <(sed '/^case/,\$d' '$CP'); parse_shared_flags --env" 2>&1 || true)
