@@ -20,7 +20,7 @@ try:
 except ImportError:
     sys.exit("error: Python 3.11+ is required (for tomllib)")
 
-VERSION = "0.9.0"
+VERSION = "0.9.1"
 IMAGE = "claude-pod:latest"
 CONTAINER_NAME_PREFIX = "claude-pod"
 HOST_OS = platform.system()
@@ -559,7 +559,7 @@ def cmd_install(args: argparse.Namespace) -> None:
     script_path = Path(script_dir)
     if has_local_build_files():
         print(f"Installing from local source ({script_dir})...")
-        if str(script_path) != str(data_dir):
+        if not os.path.samefile(script_path, data_dir):
             for f in install_files:
                 src = script_path / f
                 if src.is_file():
