@@ -20,7 +20,7 @@ try:
 except ImportError:
     sys.exit("error: Python 3.11+ is required (for tomllib)")
 
-VERSION = "0.9.1"
+VERSION = "0.10.0"
 IMAGE = "claude-pod:latest"
 CONTAINER_NAME_PREFIX = "claude-pod"
 HOST_OS = platform.system()
@@ -384,7 +384,7 @@ def cmd_run(args: argparse.Namespace) -> None:
         podman_args.append(f"--memory={args.max_memory}")
 
     if args.gpu:
-        podman_args.extend(["--device", "nvidia.com/gpu=all"])
+        podman_args.extend(["--device", f"nvidia.com/gpu={args.gpu}"])
 
     if os.environ.get("ANTHROPIC_API_KEY"):
         podman_args.extend(["-e", "ANTHROPIC_API_KEY"])
@@ -464,7 +464,7 @@ def cmd_shell(args: argparse.Namespace) -> None:
         shell_args.append(f"--memory={args.max_memory}")
 
     if args.gpu:
-        shell_args.extend(["--device", "nvidia.com/gpu=all"])
+        shell_args.extend(["--device", f"nvidia.com/gpu={args.gpu}"])
 
     if args.host_network and args.network:
         die("--host-network and --network are mutually exclusive")
@@ -628,7 +628,8 @@ def add_shared_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--dry-run", action="store_true", help="Print the podman command instead of executing it")
     parser.add_argument("-e", "--env", dest="env_vars", action="append", metavar="VAR[=VAL]",
                         help="Pass environment variable to container (repeatable)")
-    parser.add_argument("--gpu", action="store_true", help="Enable GPU passthrough (nvidia)")
+    parser.add_argument("--gpu", nargs="?", const="all", metavar="ID",
+                        help="GPU to passthrough via CDI (e.g. 0, 1, all); defaults to all")
     parser.add_argument("--host-network", action="store_true", help="Use host networking (shorthand for --network=host)")
     parser.add_argument("--max-memory", metavar="SIZE", help="Set container memory limit (e.g. 4g)")
     parser.add_argument("--network", help="Podman network mode (e.g. none, host)")
