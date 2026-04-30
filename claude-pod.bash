@@ -9,7 +9,7 @@ fi
 
 set -euo pipefail
 
-VERSION="0.9.0"
+VERSION="0.10.0"
 IMAGE="claude-pod:latest"
 CONFIG_FILE="${HOME}/.config/claude-pod/config.toml"
 PROJECT_CONFIG=""  # set to CWD/.claude-pod.toml if it exists
@@ -310,7 +310,7 @@ cmd_build() {
 }
 
 # Parse shared flags used by both cmd_run and cmd_shell.
-# Caller must declare: dry_run, env_vars, gpu, host_network, max_memory, network, ports, writable_dirs.
+# Caller must declare: dry_run, env_vars, gpu (string), host_network, max_memory, network, ports, writable_dirs.
 # Remaining (unconsumed) args are left in _parse_remaining.
 parse_shared_flags() {
     _parse_remaining=()
@@ -320,7 +320,9 @@ parse_shared_flags() {
             -e|--env)
                 [[ $# -lt 2 ]] && die "Flag --env requires a value (e.g. MY_VAR=val)"
                 env_vars+=("$2"); shift 2 ;;
-            --gpu)           gpu=true; shift ;;
+            --gpu)
+                [[ $# -lt 2 ]] && die "Flag --gpu requires a GPU ID (e.g. 0, 1, all)"
+                gpu="$2"; shift 2 ;;
             --host-network) host_network=true; shift ;;
             --max-memory)
                 [[ $# -lt 2 ]] && die "Flag --max-memory requires a value (e.g. 4g)"
@@ -355,7 +357,7 @@ cmd_run() {
 
     local detach=false
     local dry_run=false
-    local gpu=false
+    local gpu=""
     local host_network=false
     local keep_groups=false
     local no_yolo=false
@@ -437,8 +439,8 @@ cmd_run() {
     fi
 
     # GPU passthrough (podman CDI device syntax)
-    if $gpu; then
-        args+=(--device "nvidia.com/gpu=all")
+    if [[ -n "$gpu" ]]; then
+        args+=(--device "nvidia.com/gpu=$gpu")
     fi
 
     # OAuth creds in ~/.claude work too, so API key is optional
@@ -517,7 +519,7 @@ cmd_shell() {
     load_project_config "$(pwd)"
 
     local dry_run=false
-    local gpu=false
+    local gpu=""
     local host_network=false
     local max_memory=""
     local network=""
@@ -547,8 +549,8 @@ cmd_shell() {
         shell_args+=(--memory="$max_memory")
     fi
 
-    if $gpu; then
-        shell_args+=(--device "nvidia.com/gpu=all")
+    if [[ -n "$gpu" ]]; then
+        shell_args+=(--device "nvidia.com/gpu=$gpu")
     fi
 
     if $host_network && [[ -n "$network" ]]; then
@@ -704,7 +706,7 @@ Commands:
 Shared flags (run + shell):
   --dry-run              Print the podman command instead of executing it
   -e, --env <VAR[=VAL]>  Pass environment variable to container (repeatable)
-  --gpu                Enable GPU passthrough (nvidia)
+  --gpu <id>           GPU to passthrough via CDI (e.g. 0, 1, all)
   --host-network       Use host networking (shorthand for --network=host)
   --max-memory <size>  Set container memory limit (e.g. 4g, 512m)
   --network=<mode>     Podman network mode (e.g. none, host)
