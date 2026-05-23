@@ -171,7 +171,9 @@ for name in "${!FIXTURE_CMDS[@]}"; do
     fi
     fixture_content=$(< "$fixture")
     expected=$(printf '%s' "$fixture_content" | normalize | sed 's/[[:space:]]*$//')
-    actual_raw=$(cd "$FIXTURE_CWD" && HOME="$FAKE_HOME" $PY ${FIXTURE_CMDS[$name]} 2>&1)
+    # Unset HOMEBREW_PREFIX so linuxbrew mounts are not generated during fixture tests;
+    # linuxbrew availability is machine-specific and not part of the fixture contract.
+    actual_raw=$(cd "$FIXTURE_CWD" && HOME="$FAKE_HOME" HOMEBREW_PREFIX= $PY ${FIXTURE_CMDS[$name]} 2>&1)
     actual=$(printf '%s' "$actual_raw" | normalize | sed 's/[[:space:]]*$//')
     actual=$(_normalize_for_fixture "$fixture_content" "$actual")
     assert_eq "fixture $name" "$expected" "$actual"
