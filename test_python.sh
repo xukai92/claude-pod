@@ -27,6 +27,60 @@ normalize() {
     sed 's/claude-pod-[0-9]\{5,\}/claude-pod-TIMESTAMP/g'
 }
 
+# Normalize actual dry-run output for portable fixture comparison.
+# Args: <fixture_content> <actual_content>
+# - Substitutes the real $HOME (FIXTURE_HOME set by caller) with /HOME.
+# - Drops -v home-passthrough entries whose basename is not in the fixture's allowlist.
+_normalize_for_fixture() {
+    local fixture="$1"
+    local actual="$2"
+
+    # Step 1: substitute real home path → /HOME placeholder
+    actual="${actual//${FIXTURE_HOME}//HOME}"
+
+    # Step 2: build allowlist of basenames from fixture's -v /HOME/<name>: entries
+    local -A allowset
+    local tmp_str="$fixture"
+    local base
+    while [[ "$tmp_str" =~ -v[[:space:]]/HOME/([^/:]+) ]]; do
+        base="${BASH_REMATCH[1]}"
+        allowset["$base"]=1
+        tmp_str="${tmp_str#*"-v /HOME/${base}"}"
+    done
+
+    # Step 3: rebuild the command, dropping home-passthrough -v entries not in allowlist
+    local -a tokens result
+    read -ra tokens <<< "$actual"
+    local i=0
+    while (( i < ${#tokens[@]} )); do
+        local tok="${tokens[$i]}"
+        if [[ "$tok" == "-v" ]] && (( i + 1 < ${#tokens[@]} )); then
+            local mount="${tokens[$((i+1))]}"
+            if [[ "$mount" == /HOME/* ]]; then
+                local src="${mount%%:*}"
+                base="${src#/HOME/}"
+                base="${base%%/*}"
+                if [[ -v allowset["$base"] ]]; then
+                    result+=("$tok" "${tokens[$((i+1))]}")
+                fi
+                (( i += 2 ))
+                continue
+            fi
+        fi
+        result+=("$tok")
+        (( i += 1 ))
+    done
+
+    printf '%s' "${result[*]}"
+}
+
+_cleanup() {
+    [[ -n "${FAKE_HOME:-}" ]] && rm -rf "$FAKE_HOME"
+    [[ -n "${tmp_proj:-}" ]] && rm -rf "$tmp_proj"
+    [[ -n "${tmp_cache:-}" ]] && rm -rf "$tmp_cache"
+}
+trap _cleanup EXIT
+
 # --- CLI tests ---
 echo "=== Python CLI tests ==="
 
@@ -76,6 +130,18 @@ assert_contains "run forwards unknown --model flag" "$out" "--model opus"
 echo ""
 echo "=== Dry-run fixture parity ==="
 
+# Set up a fake $HOME with exactly the dotfiles the fixtures expect.
+# This makes tests portable: extra dotfiles on the real host are absent,
+# and the CWD is always /HOME/tmp/claude-pod-python after home substitution.
+FAKE_HOME=$(mktemp -d)
+FIXTURE_HOME="$FAKE_HOME"
+mkdir -p "$FAKE_HOME"/{.bash_history,.bash_logout,.bash_profile,.bashrc,.betty,\
+.bun,.cache,.claude,.config,.cursor,.gitconfig,.local,.npm,.pki,.ssh,\
+.tmux,.tmux.conf,.zcompdump,.zprofile,.zshrc,bin,google-cloud-sdk,\
+notes,obsidian,src,tmp,tmp/claude-pod-python}
+touch "$FAKE_HOME/.claude.json"
+FIXTURE_CWD="$FAKE_HOME/tmp/claude-pod-python"
+
 declare -A FIXTURE_CMDS=(
     [run_default]="run --dry-run"
     [run_wd]="run --dry-run -wd /tmp/test"
@@ -103,8 +169,13 @@ for name in "${!FIXTURE_CMDS[@]}"; do
         fail "fixture $name" "file not found: $fixture"
         continue
     fi
-    expected=$(normalize < "$fixture" | sed 's/[[:space:]]*$//')
-    actual=$($PY ${FIXTURE_CMDS[$name]} 2>&1 | normalize | sed 's/[[:space:]]*$//')
+    fixture_content=$(< "$fixture")
+    expected=$(printf '%s' "$fixture_content" | normalize | sed 's/[[:space:]]*$//')
+    # Unset HOMEBREW_PREFIX so linuxbrew mounts are not generated during fixture tests;
+    # linuxbrew availability is machine-specific and not part of the fixture contract.
+    actual_raw=$(cd "$FIXTURE_CWD" && HOME="$FAKE_HOME" HOMEBREW_PREFIX= $PY ${FIXTURE_CMDS[$name]} 2>&1)
+    actual=$(printf '%s' "$actual_raw" | normalize | sed 's/[[:space:]]*$//')
+    actual=$(_normalize_for_fixture "$fixture_content" "$actual")
     assert_eq "fixture $name" "$expected" "$actual"
 done
 
@@ -114,8 +185,6 @@ echo "=== pod.cache_source_dir override ==="
 
 tmp_proj=$(mktemp -d)
 tmp_cache=$(mktemp -d)
-# shellcheck disable=SC2064
-trap "rm -rf '$tmp_proj' '$tmp_cache'" EXIT
 
 cat > "$tmp_proj/.claude-pod.toml" <<EOF
 [pod]
