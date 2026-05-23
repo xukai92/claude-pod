@@ -109,6 +109,16 @@ claude-pod works on macOS via Podman's Linux VM (`podman machine`). The containe
 - **No `--userns=keep-id`**: Not supported with `podman machine`; skipped automatically on macOS
 - **Home dir**: The container user's home is set to match the host (e.g. `/Users/you`) so bind-mount paths align
 
+## Tests
+
+Run the launcher's test suite (no podman / network required — exercises `--dry-run` output):
+
+```bash
+bash test_python.sh
+```
+
+Tests are also run on every PR via GitHub Actions.
+
 ## Development
 
 From a local clone:
