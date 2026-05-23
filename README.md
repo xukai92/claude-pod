@@ -67,14 +67,28 @@ claude-pod shell                    # drop into a shell in the container
 
 ## Config
 
-Optional: `~/.config/claude-pod/config.toml`
+Optional global config: `~/.config/claude-pod/config.toml`  
+Optional per-project config: `.claude-pod.toml` in the project directory (merged with global; per-project wins on scalar keys)
 
 ```toml
 [defaults]
 notify_command = "curl -s -d \"Claude done in $WORKSPACE (exit $EXIT_CODE)\" https://ntfy.sh/my-topic"
 extra_volumes = ["/data/shared:/data/shared:ro"]
 extra_env = ["GITHUB_TOKEN"]
+
+[pod]
+# Per-cache source overrides — useful on btrfs multi-subvolume setups where
+# ~/.cache, ~/.npm, ~/.bun are on a different subvolume than ~/src.
+# uv/pnpm/bun hardlinks fail cross-subvolume (EXDEV) causing full ~5-7 GB venv copies.
+# Point these at paths on the same subvolume as your repos so hardlinks succeed.
+# Supports ~ and $HOME expansion. Directories are auto-created if missing.
+# See: https://github.com/xukai92/claude-pod/issues/53
+cache_source_dir = "~/src/.pod-cache"   # mounts as ~/.cache inside the pod
+npm_source_dir   = "~/src/.pod-npm"     # mounts as ~/.npm inside the pod
+bun_source_dir   = "~/src/.pod-bun"     # mounts as ~/.bun inside the pod
 ```
+
+If a source dir is set but empty while the corresponding host directory is non-empty, claude-pod prints a hint with the rsync command to migrate your existing cache — no data is moved automatically.
 
 ## Security model
 
