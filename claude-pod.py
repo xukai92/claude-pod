@@ -20,7 +20,7 @@ try:
 except ImportError:
     sys.exit("error: Python 3.11+ is required (for tomllib)")
 
-VERSION = "0.10.0"
+VERSION = "0.11.0"
 IMAGE = "claude-pod:latest"
 CONTAINER_NAME_PREFIX = "claude-pod"
 HOST_OS = platform.system()
@@ -241,11 +241,34 @@ def _home_items() -> list[Path]:
     return items
 
 
+# Config keys for per-directory source overrides: home dir name → (section, key)
+_DIR_OVERRIDE_CONFIGS: dict[str, tuple[str, str]] = {
+    ".cache": ("pod", "cache_source_dir"),
+    ".npm":   ("pod", "npm_source_dir"),
+    ".bun":   ("pod", "bun_source_dir"),
+}
+
+
+def resolve_dir_overrides(config: "Config") -> dict[str, Path]:
+    """Read per-directory source overrides from config and return {dir_name: resolved_src}."""
+    overrides: dict[str, Path] = {}
+    for dir_name, (section, key) in _DIR_OVERRIDE_CONFIGS.items():
+        val = config.get_merged(section, key)
+        if val:
+            src = Path(os.path.expandvars(val)).expanduser().resolve()
+            src.mkdir(parents=True, exist_ok=True)
+            overrides[dir_name] = src
+    return overrides
+
+
 def mount_home_items(
-    args: list[str], cwd: Path, extra_rw: set[str]
+    args: list[str], cwd: Path, extra_rw: set[str], dir_overrides: dict[str, Path] | None = None
 ) -> None:
     home_str = str(HOME)
     cwd_str = str(cwd)
+
+    if dir_overrides is None:
+        dir_overrides = {}
 
     # Determine cwd's top-level parent under HOME
     cwd_top = ""
@@ -253,6 +276,7 @@ def mount_home_items(
         rel = cwd_str[len(home_str) + 1 :]
         cwd_top = str(HOME / rel.split("/")[0])
 
+    handled: set[str] = set()
     for item in _home_items():
         name = item.name
         item_str = str(item)
@@ -262,12 +286,41 @@ def mount_home_items(
 
         if name == ".claude.json":
             args.extend(["-v", f"{item_str}:/mnt/.claude.json:ro"])
+        elif name in dir_overrides:
+            src = dir_overrides[name]
+            container_path = HOME / name
+            args.extend(["-v", f"{src}:{container_path}"])
+            print(f"claude-pod: mounting {name} from {src} (pod.{_DIR_OVERRIDE_CONFIGS[name][1]} override)", file=sys.stderr)
+            handled.add(name)
         elif name in _RW_DIRS:
             args.extend(["-v", f"{item_str}:{item_str}"])
         elif item_str == cwd_top or item_str in extra_rw:
             args.extend(["-v", f"{item_str}:{item_str}"])
         else:
             args.extend(["-v", f"{item_str}:{item_str}:ro"])
+
+    # Mount overrides for dirs that didn't exist on the host
+    for name, src in dir_overrides.items():
+        if name not in handled:
+            container_path = HOME / name
+            args.extend(["-v", f"{src}:{container_path}"])
+            print(f"claude-pod: mounting {name} from {src} (pod.{_DIR_OVERRIDE_CONFIGS[name][1]} override)", file=sys.stderr)
+
+    # Migration hint: for each override whose source is empty but host dir is non-empty
+    for name, src in dir_overrides.items():
+        host_dir = HOME / name
+        src_empty = not any(src.iterdir()) if src.exists() else True
+        host_has_content = host_dir.is_dir() and any(host_dir.iterdir())
+        if src_empty and host_has_content:
+            key = _DIR_OVERRIDE_CONFIGS[name][1]
+            print(
+                f"claude-pod: {key} is set but empty; existing ~/{name} contents won't be visible inside the pod.",
+                file=sys.stderr,
+            )
+            print(
+                f"            to migrate one-time: rsync -aH ~/{name}/ {src}/ && rm -rf ~/{name}/...",
+                file=sys.stderr,
+            )
 
 
 def cwd_needs_mount(cwd: Path) -> bool:
@@ -277,13 +330,13 @@ def cwd_needs_mount(cwd: Path) -> bool:
 
 
 def build_base_args(
-    args: list[str], cwd: Path, extra_rw: set[str]
+    args: list[str], cwd: Path, extra_rw: set[str], dir_overrides: dict[str, Path] | None = None
 ) -> None:
     args.extend(["--rm", "-w", str(cwd)])
     if not is_macos():
         args.extend(["--userns=keep-id", "--security-opt", "label=disable"])
 
-    mount_home_items(args, cwd, extra_rw)
+    mount_home_items(args, cwd, extra_rw, dir_overrides)
 
     if cwd_needs_mount(cwd):
         if is_macos():
@@ -374,8 +427,10 @@ def cmd_run(args: argparse.Namespace) -> None:
     writable_dirs.extend(d for d in config.get_array_merged("defaults", "writable_dirs") if d)
     extra_rw = set(writable_dirs)
 
+    dir_overrides = resolve_dir_overrides(config)
+
     podman_args = ["--name", f"{CONTAINER_NAME_PREFIX}-{int(time.time())}"]
-    build_base_args(podman_args, cwd, extra_rw)
+    build_base_args(podman_args, cwd, extra_rw, dir_overrides)
 
     if args.keep_groups:
         podman_args.extend(["--group-add", "keep-groups"])
@@ -457,8 +512,10 @@ def cmd_shell(args: argparse.Namespace) -> None:
     writable_dirs.extend(d for d in config.get_array_merged("defaults", "writable_dirs") if d)
     extra_rw = set(writable_dirs)
 
+    dir_overrides = resolve_dir_overrides(config)
+
     shell_args = ["-it"]
-    build_base_args(shell_args, cwd, extra_rw)
+    build_base_args(shell_args, cwd, extra_rw, dir_overrides)
 
     if args.max_memory:
         shell_args.append(f"--memory={args.max_memory}")

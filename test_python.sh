@@ -108,6 +108,30 @@ for name in "${!FIXTURE_CMDS[@]}"; do
     assert_eq "fixture $name" "$expected" "$actual"
 done
 
+# --- pod.cache_source_dir override ---
+echo ""
+echo "=== pod.cache_source_dir override ==="
+
+tmp_proj=$(mktemp -d)
+tmp_cache=$(mktemp -d)
+# shellcheck disable=SC2064
+trap "rm -rf '$tmp_proj' '$tmp_cache'" EXIT
+
+cat > "$tmp_proj/.claude-pod.toml" <<EOF
+[pod]
+cache_source_dir = "$tmp_cache"
+EOF
+
+# Run from the temp project dir so the project config is picked up
+cache_out=$(cd "$tmp_proj" && $PY run --dry-run 2>/dev/null)
+assert_contains "cache_source_dir override appears in mount args" "$cache_out" "$tmp_cache"
+# Container-side target must be the standard ~/.cache path
+assert_contains "cache_source_dir mounts to container ~/.cache" "$cache_out" "${HOME}/.cache"
+# Override path must not appear on the right-hand side of the volume spec
+# (i.e. source and dest differ — source is tmp_cache, dest is ~/.cache)
+cache_vol_spec="$tmp_cache:${HOME}/.cache"
+assert_contains "cache_source_dir volume spec has correct src:dst" "$cache_out" "$cache_vol_spec"
+
 # --- Summary ---
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="
