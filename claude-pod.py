@@ -249,14 +249,18 @@ _DIR_OVERRIDE_CONFIGS: dict[str, tuple[str, str]] = {
 }
 
 
-def resolve_dir_overrides(config: "Config") -> dict[str, Path]:
+def resolve_dir_overrides(config: "Config", create_dirs: bool = True) -> dict[str, Path]:
     """Read per-directory source overrides from config and return {dir_name: resolved_src}."""
     overrides: dict[str, Path] = {}
     for dir_name, (section, key) in _DIR_OVERRIDE_CONFIGS.items():
         val = config.get_merged(section, key)
         if val:
-            src = Path(os.path.expandvars(val)).expanduser().resolve()
-            src.mkdir(parents=True, exist_ok=True)
+            expanded = os.path.expandvars(val)
+            if "$" in expanded:
+                print(f"warning: pod.{key} contains an unresolved variable after expansion: {expanded!r}", file=sys.stderr)
+            src = Path(expanded).expanduser().resolve()
+            if create_dirs:
+                src.mkdir(parents=True, exist_ok=True)
             overrides[dir_name] = src
     return overrides
 
@@ -318,7 +322,11 @@ def mount_home_items(
                 file=sys.stderr,
             )
             print(
-                f"            to migrate one-time: rsync -aH ~/{name}/ {src}/ && rm -rf ~/{name}/...",
+                f"            to migrate one-time: rsync -aH ~/{name}/ {src}/",
+                file=sys.stderr,
+            )
+            print(
+                f"            then remove the dirs you no longer need from ~/{name}/ (e.g. rm -rf ~/{name}/uv ~/{name}/pip)",
                 file=sys.stderr,
             )
 
@@ -427,7 +435,7 @@ def cmd_run(args: argparse.Namespace) -> None:
     writable_dirs.extend(d for d in config.get_array_merged("defaults", "writable_dirs") if d)
     extra_rw = set(writable_dirs)
 
-    dir_overrides = resolve_dir_overrides(config)
+    dir_overrides = resolve_dir_overrides(config, create_dirs=not args.dry_run)
 
     podman_args = ["--name", f"{CONTAINER_NAME_PREFIX}-{int(time.time())}"]
     build_base_args(podman_args, cwd, extra_rw, dir_overrides)
@@ -512,7 +520,7 @@ def cmd_shell(args: argparse.Namespace) -> None:
     writable_dirs.extend(d for d in config.get_array_merged("defaults", "writable_dirs") if d)
     extra_rw = set(writable_dirs)
 
-    dir_overrides = resolve_dir_overrides(config)
+    dir_overrides = resolve_dir_overrides(config, create_dirs=not args.dry_run)
 
     shell_args = ["-it"]
     build_base_args(shell_args, cwd, extra_rw, dir_overrides)
