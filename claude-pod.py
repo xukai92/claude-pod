@@ -649,6 +649,64 @@ def cmd_ps(_args: argparse.Namespace) -> None:
     sys.exit(result.returncode)
 
 
+def cmd_logs(args: argparse.Namespace) -> None:
+    logger.debug("starting logs")
+    require_podman()
+    ensure_podman_machine()
+    container = args.container
+    if not container:
+        result = subprocess.run(
+            ["podman", "ps", "-a", "--filter", f"name={CONTAINER_NAME_PREFIX}",
+             "--format", "{{.Names}}"],
+            capture_output=True, text=True,
+        )
+        if result.returncode != 0:
+            err = (result.stderr or "").strip()
+            die(f"'podman ps' failed (exit code {result.returncode}): {err}" if err
+                else f"'podman ps' failed with exit code {result.returncode}.")
+        containers = result.stdout.strip().splitlines()
+        if not containers:
+            die("No claude-pod container found.")
+        container = containers[0]
+    cmd = ["podman", "logs"]
+    if args.follow:
+        cmd.append("--follow")
+    if args.tail is not None:
+        cmd.extend(["--tail", str(args.tail)])
+    cmd.append(container)
+    logger.debug("running: %s", shlex.join(cmd))
+    ret = subprocess.run(cmd)
+    sys.exit(ret.returncode)
+
+
+def cmd_inspect(args: argparse.Namespace) -> None:
+    logger.debug("starting inspect")
+    require_podman()
+    ensure_podman_machine()
+    container = args.container
+    if not container:
+        result = subprocess.run(
+            ["podman", "ps", "-a", "--filter", f"name={CONTAINER_NAME_PREFIX}",
+             "--format", "{{.Names}}"],
+            capture_output=True, text=True,
+        )
+        if result.returncode != 0:
+            err = (result.stderr or "").strip()
+            die(f"'podman ps' failed (exit code {result.returncode}): {err}" if err
+                else f"'podman ps' failed with exit code {result.returncode}.")
+        containers = result.stdout.strip().splitlines()
+        if not containers:
+            die("No claude-pod container found.")
+        container = containers[0]
+    cmd = ["podman", "inspect"]
+    if args.format:
+        cmd.extend(["--format", args.format])
+    cmd.append(container)
+    logger.debug("running: %s", shlex.join(cmd))
+    ret = subprocess.run(cmd)
+    sys.exit(ret.returncode)
+
+
 def cmd_clean(_args: argparse.Namespace) -> None:
     logger.debug("starting clean")
     require_podman()
@@ -807,6 +865,19 @@ def build_parser() -> argparse.ArgumentParser:
     list_parser = subparsers.add_parser("list", help="List running claude-pod containers")
     list_parser.set_defaults(func=cmd_ps)
 
+    # logs
+    logs_parser = subparsers.add_parser("logs", help="Show logs from a claude-pod container")
+    logs_parser.add_argument("container", nargs="?", help="Container name (default: most recent)")
+    logs_parser.add_argument("-f", "--follow", action="store_true", help="Follow log output")
+    logs_parser.add_argument("-n", "--tail", type=int, metavar="N", help="Number of lines to show from end")
+    logs_parser.set_defaults(func=cmd_logs)
+
+    # inspect
+    inspect_parser = subparsers.add_parser("inspect", help="Show container details")
+    inspect_parser.add_argument("container", nargs="?", help="Container name (default: most recent)")
+    inspect_parser.add_argument("-f", "--format", metavar="FORMAT", help="Format the output using a Go template")
+    inspect_parser.set_defaults(func=cmd_inspect)
+
     # clean
     clean_parser = subparsers.add_parser("clean", help="Remove container image")
     clean_parser.set_defaults(func=cmd_clean)
@@ -826,6 +897,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     # Add verbosity flags to subcommands that don't use add_shared_flags
     for p in (build_parser_, exec_parser, ps_parser, list_parser,
+              logs_parser, inspect_parser,
               clean_parser, install_parser, config_parser, version_parser):
         _add_verbosity_flags(p)
 

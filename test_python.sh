@@ -100,6 +100,8 @@ assert_contains "--help shows exec" "$out" "exec"
 assert_contains "--help shows ps" "$out" "ps"
 assert_contains "--help shows clean" "$out" "clean"
 assert_contains "--help shows install" "$out" "install"
+assert_contains "--help shows logs" "$out" "logs"
+assert_contains "--help shows inspect" "$out" "inspect"
 
 out=$($PY run --help 2>&1 || true)
 assert_contains "run --help shows --dry-run" "$out" "--dry-run"
@@ -118,6 +120,15 @@ assert_contains "run --help shows --host-network" "$out" "--host-network"
 out=$($PY shell --help 2>&1 || true)
 assert_contains "shell --help shows --dry-run" "$out" "--dry-run"
 assert_contains "shell --help shows --gpu" "$out" "--gpu"
+
+out=$($PY logs --help 2>&1 || true)
+assert_contains "logs --help shows --follow" "$out" "--follow"
+assert_contains "logs --help shows --tail" "$out" "--tail"
+assert_contains "logs --help shows container arg" "$out" "container"
+
+out=$($PY inspect --help 2>&1 || true)
+assert_contains "inspect --help shows --format" "$out" "--format"
+assert_contains "inspect --help shows container arg" "$out" "container"
 
 # --- Unknown flag forwarding (run subcommand) ---
 echo ""
