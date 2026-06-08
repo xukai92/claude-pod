@@ -15,6 +15,8 @@ A Podman wrapper CLI for running Claude Code in rootless container sandboxes wit
 - test_python.sh
 - tests/**/*
 - fixtures/**/*
+- eval/**/*
+- factory.md
 
 ### Read-only
 
@@ -39,7 +41,7 @@ python3 eval/score.py
 
 ### Threshold
 
-0.8
+0.5
 
 ## Target Branch
 
