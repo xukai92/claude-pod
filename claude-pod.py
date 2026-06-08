@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 import shlex
 import platform
@@ -13,6 +14,8 @@ import shutil
 import subprocess
 import sys
 import time
+import uuid
+from contextvars import ContextVar
 from pathlib import Path
 
 try:
@@ -20,13 +23,40 @@ try:
 except ImportError:
     sys.exit("error: Python 3.11+ is required (for tomllib)")
 
-VERSION = "0.11.1"
+VERSION = "0.12.0"
 IMAGE = "claude-pod:latest"
 CONTAINER_NAME_PREFIX = "claude-pod"
 HOST_OS = platform.system()
 HOME = Path.home()
 CONFIG_FILE = HOME / ".config" / "claude-pod" / "config.toml"
 DATA_DIR = HOME / ".local" / "share" / "claude-pod"
+
+logger = logging.getLogger("claude-pod")
+operation_id: ContextVar[str] = ContextVar("operation_id", default="")
+
+
+class _OperationFilter(logging.Filter):
+    def filter(self, record):
+        record.operation_id = operation_id.get("")
+        return True
+
+
+def configure_logging(verbose: int, quiet: bool) -> None:
+    if quiet:
+        level = logging.ERROR
+    elif verbose >= 2:
+        level = logging.DEBUG
+    elif verbose >= 1:
+        level = logging.INFO
+    else:
+        level = logging.WARNING
+
+    fmt = "claude-pod[%(operation_id)s] %(message)s" if verbose >= 2 else "%(message)s"
+    handler = logging.StreamHandler(sys.stderr)
+    handler.addFilter(_OperationFilter())
+    handler.setFormatter(logging.Formatter(fmt))
+    logger.addHandler(handler)
+    logger.setLevel(level)
 
 
 def is_macos() -> bool:
@@ -47,7 +77,7 @@ def _load_toml(path: Path) -> dict:
             with path.open("rb") as f:
                 result = tomllib.load(f)
         except Exception as exc:
-            print(f"warning: failed to load config '{path}': {exc}", file=sys.stderr)
+            logger.warning("failed to load config '%s': %s", path, exc)
     _toml_cache[path] = result
     return result
 
@@ -91,18 +121,23 @@ class Config:
 
 def load_project_config(directory: Path) -> Path | None:
     cfg = directory / ".claude-pod.toml"
-    return cfg if cfg.is_file() else None
+    if cfg.is_file():
+        logger.debug("found project config: %s", cfg)
+        return cfg
+    logger.debug("no project config in %s", directory)
+    return None
 
 
 # --- Helpers ---
 
 
 def die(msg: str) -> None:
-    print(f"error: {msg}", file=sys.stderr)
+    logger.error("error: %s", msg)
     sys.exit(1)
 
 
 def require_image() -> None:
+    logger.debug("checking for image %s", IMAGE)
     result = subprocess.run(
         ["podman", "image", "exists", IMAGE],
         capture_output=True,
@@ -112,7 +147,7 @@ def require_image() -> None:
 
 
 def suggest_podman_install() -> None:
-    print("error: Podman is not installed.", file=sys.stderr)
+    logger.error("Podman is not installed.")
     install_cmd = ""
     needs_root = False
 
@@ -137,30 +172,30 @@ def suggest_podman_install() -> None:
             break
 
     if needs_root and install_cmd:
-        print(f"Install with (as root): {install_cmd}", file=sys.stderr)
-        print("Run as root or install sudo first.", file=sys.stderr)
+        logger.error("Install with (as root): %s", install_cmd)
+        logger.error("Run as root or install sudo first.")
         sys.exit(1)
 
     if install_cmd:
-        print(f"Install with: {install_cmd}", file=sys.stderr)
+        logger.error("Install with: %s", install_cmd)
         if sys.stdin.isatty() and sys.stderr.isatty():
             answer = input("Install now? [y/N] ")
             if answer.strip().lower() == "y":
-                ret = subprocess.run(install_cmd, shell=True)
+                ret = subprocess.run(shlex.split(install_cmd))
                 if ret.returncode != 0:
                     die("Podman installation failed.")
                 if not shutil.which("podman"):
                     die("Podman was installed but is not in PATH. Try opening a new shell.")
                 return
     else:
-        print(
-            "See https://podman.io/docs/installation for install instructions.",
-            file=sys.stderr,
+        logger.error(
+            "See https://podman.io/docs/installation for install instructions."
         )
     sys.exit(1)
 
 
 def require_podman() -> None:
+    logger.debug("checking for podman")
     if not shutil.which("podman"):
         suggest_podman_install()
 
@@ -168,11 +203,12 @@ def require_podman() -> None:
 def ensure_podman_machine() -> None:
     if not is_macos():
         return
+    logger.debug("checking podman machine status")
     result = subprocess.run(
         ["podman", "info"], capture_output=True
     )
     if result.returncode != 0:
-        print("Starting podman machine...")
+        logger.info("Starting podman machine...")
         subprocess.run(["podman", "machine", "init"], capture_output=True)
         ret = subprocess.run(["podman", "machine", "start"])
         if ret.returncode != 0:
@@ -193,14 +229,17 @@ def resolve_dirs() -> tuple[str, str]:
         build_dir = script_dir
     else:
         build_dir = str(DATA_DIR)
+    logger.debug("resolved dirs: script=%s build=%s", script_dir, build_dir)
     return script_dir, build_dir
 
 
 def has_local_build_files() -> bool:
     script_dir = Path(__file__).resolve().parent
-    return (script_dir / "Containerfile").is_file() and (
+    result = (script_dir / "Containerfile").is_file() and (
         script_dir / "entrypoint.sh"
     ).is_file()
+    logger.debug("local build files present: %s", result)
+    return result
 
 
 # --- Mount helpers ---
@@ -238,10 +277,11 @@ def _home_items() -> list[Path]:
             seen.add(name)
             items.append(item)
 
+    logger.debug("found %d home items", len(items))
     return items
 
 
-# Config keys for per-directory source overrides: home dir name → (section, key)
+# Config keys for per-directory source overrides: home dir name -> (section, key)
 _DIR_OVERRIDE_CONFIGS: dict[str, tuple[str, str]] = {
     ".cache": ("pod", "cache_source_dir"),
     ".npm":   ("pod", "npm_source_dir"),
@@ -257,17 +297,19 @@ def resolve_dir_overrides(config: "Config", create_dirs: bool = True) -> dict[st
         if val:
             expanded = os.path.expandvars(val)
             if "$" in expanded:
-                print(f"warning: pod.{key} contains an unresolved variable after expansion: {expanded!r}", file=sys.stderr)
+                logger.warning("pod.%s contains an unresolved variable after expansion: %r", key, expanded)
             src = Path(expanded).expanduser().resolve()
             if create_dirs:
                 src.mkdir(parents=True, exist_ok=True)
             overrides[dir_name] = src
+    logger.debug("dir overrides: %s", overrides)
     return overrides
 
 
 def mount_home_items(
     args: list[str], cwd: Path, extra_rw: set[str], dir_overrides: dict[str, Path] | None = None
 ) -> None:
+    logger.debug("mounting home items, cwd=%s, extra_rw=%s", cwd, extra_rw)
     home_str = str(HOME)
     cwd_str = str(cwd)
 
@@ -294,7 +336,7 @@ def mount_home_items(
             src = dir_overrides[name]
             container_path = HOME / name
             args.extend(["-v", f"{src}:{container_path}"])
-            print(f"claude-pod: mounting {name} from {src} (pod.{_DIR_OVERRIDE_CONFIGS[name][1]} override)", file=sys.stderr)
+            logger.info("mounting %s from %s (pod.%s override)", name, src, _DIR_OVERRIDE_CONFIGS[name][1])
             handled.add(name)
         elif name in _RW_DIRS:
             args.extend(["-v", f"{item_str}:{item_str}"])
@@ -308,7 +350,7 @@ def mount_home_items(
         if name not in handled:
             container_path = HOME / name
             args.extend(["-v", f"{src}:{container_path}"])
-            print(f"claude-pod: mounting {name} from {src} (pod.{_DIR_OVERRIDE_CONFIGS[name][1]} override)", file=sys.stderr)
+            logger.info("mounting %s from %s (pod.%s override)", name, src, _DIR_OVERRIDE_CONFIGS[name][1])
 
     # Migration hint: for each override whose source is empty but host dir is non-empty
     for name, src in dir_overrides.items():
@@ -317,17 +359,17 @@ def mount_home_items(
         host_has_content = host_dir.is_dir() and any(host_dir.iterdir())
         if src_empty and host_has_content:
             key = _DIR_OVERRIDE_CONFIGS[name][1]
-            print(
-                f"claude-pod: {key} is set but empty; existing ~/{name} contents won't be visible inside the pod.",
-                file=sys.stderr,
+            logger.warning(
+                "%s is set but empty; existing ~/%s contents won't be visible inside the pod.",
+                key, name,
             )
-            print(
-                f"            to migrate one-time: rsync -aH ~/{name}/ {src}/",
-                file=sys.stderr,
+            logger.warning(
+                "to migrate one-time: rsync -aH ~/%s/ %s/",
+                name, src,
             )
-            print(
-                f"            then remove the dirs you no longer need from ~/{name}/ (e.g. rm -rf ~/{name}/uv ~/{name}/pip)",
-                file=sys.stderr,
+            logger.warning(
+                "then remove the dirs you no longer need from ~/%s/ (e.g. rm -rf ~/%s/uv ~/%s/pip)",
+                name, name, name,
             )
 
 
@@ -340,6 +382,7 @@ def cwd_needs_mount(cwd: Path) -> bool:
 def build_base_args(
     args: list[str], cwd: Path, extra_rw: set[str], dir_overrides: dict[str, Path] | None = None
 ) -> None:
+    logger.debug("building container args for cwd=%s", cwd)
     args.extend(["--rm", "-w", str(cwd)])
     if not is_macos():
         args.extend(["--userns=keep-id", "--security-opt", "label=disable"])
@@ -348,9 +391,9 @@ def build_base_args(
 
     if cwd_needs_mount(cwd):
         if is_macos():
-            print(
-                f"warning: CWD '{cwd}' is outside $HOME — it may not be shared with the podman machine VM.",
-                file=sys.stderr,
+            logger.warning(
+                "CWD '%s' is outside $HOME — it may not be shared with the podman machine VM.",
+                cwd,
             )
         args.extend(["-v", f"{cwd}:{cwd}"])
 
@@ -371,6 +414,7 @@ def build_base_args(
 
 
 def cmd_build(_args: argparse.Namespace) -> None:
+    logger.debug("starting build")
     require_podman()
     ensure_podman_machine()
     _, build_dir = resolve_dirs()
@@ -384,14 +428,14 @@ def cmd_build(_args: argparse.Namespace) -> None:
     except Exception:
         pass
     if shell_name not in ("bash", "zsh", "fish"):
-        print(f"warning: unsupported shell '{shell_name}', defaulting to bash", file=sys.stderr)
+        logger.warning("unsupported shell '%s', defaulting to bash", shell_name)
         shell_name = "bash"
 
     username = pwd.getpwuid(os.getuid()).pw_name
     uid = os.getuid()
     gid = os.getgid()
 
-    print(f"Building {IMAGE} for {username} (uid={uid}, gid={gid}, shell={shell_name})...")
+    logger.info("Building %s for %s (uid=%d, gid=%d, shell=%s)...", IMAGE, username, uid, gid, shell_name)
     build_args = [
         "--build-arg", f"USERNAME={username}",
         "--build-arg", f"USER_UID={uid}",
@@ -407,6 +451,7 @@ def cmd_build(_args: argparse.Namespace) -> None:
 
 
 def cmd_run(args: argparse.Namespace) -> None:
+    logger.debug("starting run")
     cwd = Path.cwd()
     project_config = load_project_config(cwd)
     config = Config(project_config)
@@ -419,7 +464,7 @@ def cmd_run(args: argparse.Namespace) -> None:
             if not re.match(r"^[A-Za-z0-9._-]+$", legacy_topic):
                 die(f"Invalid notify topic '{legacy_topic}' in config. Allowed characters: letters, digits, '.', '_', '-'")
             notify_cmd = f'curl -s -d "Claude Code finished in $WORKSPACE (exit $EXIT_CODE)" https://ntfy.sh/{legacy_topic}'
-            print("warning: 'defaults.notify_topic' is deprecated; use 'defaults.notify_command' instead.", file=sys.stderr)
+            logger.warning("'defaults.notify_topic' is deprecated; use 'defaults.notify_command' instead.")
 
     # Override from CLI flags
     if args.notify:
@@ -511,6 +556,7 @@ def cmd_run(args: argparse.Namespace) -> None:
 
 
 def cmd_shell(args: argparse.Namespace) -> None:
+    logger.debug("starting shell")
     cwd = Path.cwd()
     project_config = load_project_config(cwd)
     config = Config(project_config)
@@ -569,6 +615,7 @@ def cmd_shell(args: argparse.Namespace) -> None:
 
 
 def cmd_exec(args: argparse.Namespace) -> None:
+    logger.debug("starting exec")
     require_podman()
     ensure_podman_machine()
     if not args.command:
@@ -586,11 +633,13 @@ def cmd_exec(args: argparse.Namespace) -> None:
     if not containers:
         die("No running claude-pod container found.")
     container = containers[0]
+    logger.debug("executing in container %s", container)
     ret = subprocess.run(["podman", "exec", "-it", container] + args.command)
     sys.exit(ret.returncode)
 
 
 def cmd_ps(_args: argparse.Namespace) -> None:
+    logger.debug("starting ps")
     require_podman()
     ensure_podman_machine()
     result = subprocess.run([
@@ -600,15 +649,75 @@ def cmd_ps(_args: argparse.Namespace) -> None:
     sys.exit(result.returncode)
 
 
-def cmd_clean(_args: argparse.Namespace) -> None:
+def cmd_logs(args: argparse.Namespace) -> None:
+    logger.debug("starting logs")
     require_podman()
     ensure_podman_machine()
-    print("Removing claude-pod image...")
+    container = args.container
+    if not container:
+        result = subprocess.run(
+            ["podman", "ps", "-a", "--filter", f"name={CONTAINER_NAME_PREFIX}",
+             "--format", "{{.Names}}"],
+            capture_output=True, text=True,
+        )
+        if result.returncode != 0:
+            err = (result.stderr or "").strip()
+            die(f"'podman ps' failed (exit code {result.returncode}): {err}" if err
+                else f"'podman ps' failed with exit code {result.returncode}.")
+        containers = result.stdout.strip().splitlines()
+        if not containers:
+            die("No claude-pod container found.")
+        container = containers[0]
+    cmd = ["podman", "logs"]
+    if args.follow:
+        cmd.append("--follow")
+    if args.tail is not None:
+        cmd.extend(["--tail", str(args.tail)])
+    cmd.append(container)
+    logger.debug("running: %s", shlex.join(cmd))
+    ret = subprocess.run(cmd)
+    sys.exit(ret.returncode)
+
+
+def cmd_inspect(args: argparse.Namespace) -> None:
+    logger.debug("starting inspect")
+    require_podman()
+    ensure_podman_machine()
+    container = args.container
+    if not container:
+        result = subprocess.run(
+            ["podman", "ps", "-a", "--filter", f"name={CONTAINER_NAME_PREFIX}",
+             "--format", "{{.Names}}"],
+            capture_output=True, text=True,
+        )
+        if result.returncode != 0:
+            err = (result.stderr or "").strip()
+            die(f"'podman ps' failed (exit code {result.returncode}): {err}" if err
+                else f"'podman ps' failed with exit code {result.returncode}.")
+        containers = result.stdout.strip().splitlines()
+        if not containers:
+            die("No claude-pod container found.")
+        container = containers[0]
+    cmd = ["podman", "inspect"]
+    if args.format:
+        cmd.extend(["--format", args.format])
+    cmd.append(container)
+    logger.debug("running: %s", shlex.join(cmd))
+    ret = subprocess.run(cmd)
+    sys.exit(ret.returncode)
+
+
+def cmd_clean(_args: argparse.Namespace) -> None:
+    logger.debug("starting clean")
+    require_podman()
+    ensure_podman_machine()
+    logger.info("Removing claude-pod image...")
     subprocess.run(["podman", "rmi", "-f", IMAGE], capture_output=True)
-    print("Done.")
+    logger.info("Done.")
 
 
 def cmd_install(args: argparse.Namespace) -> None:
+    logger.debug("starting install")
     require_podman()
     script_dir, _ = resolve_dirs()
 
@@ -623,7 +732,7 @@ def cmd_install(args: argparse.Namespace) -> None:
 
     script_path = Path(script_dir)
     if has_local_build_files():
-        print(f"Installing from local source ({script_dir})...")
+        logger.info("Installing from local source (%s)...", script_dir)
         if not os.path.samefile(script_path, data_dir):
             for f in install_files:
                 src = script_path / f
@@ -635,7 +744,7 @@ def cmd_install(args: argparse.Namespace) -> None:
         if not shutil.which("curl"):
             die("curl is required for remote install.")
         github_raw = f"https://raw.githubusercontent.com/xukai92/claude-pod/{ref}"
-        print(f"Downloading claude-pod from GitHub (ref: {ref})...")
+        logger.info("Downloading claude-pod from GitHub (ref: %s)...", ref)
         procs = []
         for fname in download_files:
             p = subprocess.Popen(
@@ -662,19 +771,19 @@ def cmd_install(args: argparse.Namespace) -> None:
         shutil.copy2(str(data_dir / f), str(dest))
         dest.chmod(0o755)
 
-    print("Installed claude-pod to ~/.local/bin/claude-pod")
+    logger.info("Installed claude-pod to ~/.local/bin/claude-pod")
 
     path_dirs = os.environ.get("PATH", "").split(":")
     if str(local_bin) not in path_dirs:
-        print("warning: ~/.local/bin is not in your PATH. Add it to your shell profile.", file=sys.stderr)
+        logger.warning("~/.local/bin is not in your PATH. Add it to your shell profile.")
 
-    print()
     # Build image
     build_ns = argparse.Namespace()
     cmd_build(build_ns)
 
 
 def cmd_config(_args: argparse.Namespace) -> None:
+    logger.debug("showing config")
     print(f"Global config: {CONFIG_FILE}")
     if CONFIG_FILE.is_file():
         print(CONFIG_FILE.read_text())
@@ -683,6 +792,7 @@ def cmd_config(_args: argparse.Namespace) -> None:
 
 
 def cmd_version(_args: argparse.Namespace) -> None:
+    logger.debug("showing version")
     print(f"claude-pod {VERSION}")
 
 
@@ -690,6 +800,10 @@ def cmd_version(_args: argparse.Namespace) -> None:
 
 
 def add_shared_flags(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("-v", "--verbose", action="count", default=0,
+                        help="Increase verbosity (-v info, -vv debug)")
+    parser.add_argument("-q", "--quiet", action="store_true",
+                        help="Suppress non-error output")
     parser.add_argument("--dry-run", action="store_true", help="Print the podman command instead of executing it")
     parser.add_argument("-e", "--env", dest="env_vars", action="append", metavar="VAR[=VAL]",
                         help="Pass environment variable to container (repeatable)")
@@ -702,6 +816,13 @@ def add_shared_flags(parser: argparse.ArgumentParser) -> None:
                         help="Expose a port (e.g. 3000:3000, repeatable)")
     parser.add_argument("-wd", "--writable-dir", dest="writable_dirs", action="append", metavar="PATH",
                         help="Mount a dir read-write (can be repeated)")
+
+
+def _add_verbosity_flags(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("-v", "--verbose", action="count", default=0,
+                        help="Increase verbosity (-v info, -vv debug)")
+    parser.add_argument("-q", "--quiet", action="store_true",
+                        help="Suppress non-error output")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -744,6 +865,19 @@ def build_parser() -> argparse.ArgumentParser:
     list_parser = subparsers.add_parser("list", help="List running claude-pod containers")
     list_parser.set_defaults(func=cmd_ps)
 
+    # logs
+    logs_parser = subparsers.add_parser("logs", help="Show logs from a claude-pod container")
+    logs_parser.add_argument("container", nargs="?", help="Container name (default: most recent)")
+    logs_parser.add_argument("-f", "--follow", action="store_true", help="Follow log output")
+    logs_parser.add_argument("-n", "--tail", type=int, metavar="N", help="Number of lines to show from end")
+    logs_parser.set_defaults(func=cmd_logs)
+
+    # inspect
+    inspect_parser = subparsers.add_parser("inspect", help="Show container details")
+    inspect_parser.add_argument("container", nargs="?", help="Container name (default: most recent)")
+    inspect_parser.add_argument("-f", "--format", metavar="FORMAT", help="Format the output using a Go template")
+    inspect_parser.set_defaults(func=cmd_inspect)
+
     # clean
     clean_parser = subparsers.add_parser("clean", help="Remove container image")
     clean_parser.set_defaults(func=cmd_clean)
@@ -761,6 +895,12 @@ def build_parser() -> argparse.ArgumentParser:
     version_parser = subparsers.add_parser("version", help="Show version")
     version_parser.set_defaults(func=cmd_version)
 
+    # Add verbosity flags to subcommands that don't use add_shared_flags
+    for p in (build_parser_, exec_parser, ps_parser, list_parser,
+              logs_parser, inspect_parser,
+              clean_parser, install_parser, config_parser, version_parser):
+        _add_verbosity_flags(p)
+
     return parser
 
 
@@ -774,6 +914,13 @@ def main() -> None:
     # Use parse_known_args so unrecognized flags pass through to Claude Code
     # (matches bash behavior where unknown flags are forwarded)
     args, unknown = parser.parse_known_args()
+
+    # Configure logging before command dispatch
+    verbose = getattr(args, "verbose", 0) or 0
+    quiet = getattr(args, "quiet", False) or False
+    configure_logging(verbose, quiet)
+    operation_id.set(uuid.uuid4().hex[:8])
+    logger.debug("parsed command: %s", getattr(args, "command", None))
 
     if getattr(args, "command", None) == "run":
         # Forward unknown args as claude_args.
